@@ -32,12 +32,12 @@ Natural language request
 
 ## Quick Start
 
-POKit Starter v0.1.0 is distributed as a starter archive. It is not an npm, pip, Homebrew, Docker, or package-registry install.
+POKit Starter v0.2.1 is distributed as a starter archive. It is not an npm, pip, Homebrew, Docker, or package-registry install.
 
 ### Option A: GitHub UI
 
-1. Open the [v0.1.0 release](https://github.com/dongwonlee222/POKit2/releases/tag/v0.1.0).
-2. Download `pokit-starter-v0.1.0.tar.gz`.
+1. Open the [v0.2.1 release](https://github.com/dongwonlee222/POKit2/releases/tag/v0.2.1).
+2. Download `pokit-starter-v0.2.1.tar.gz`.
 3. Extract it into a fresh project folder.
 4. Ask your agent: `POKit 시작하자`.
 
@@ -46,9 +46,9 @@ POKit Starter v0.1.0 is distributed as a starter archive. It is not an npm, pip,
 ```bash
 mkdir my-project
 cd my-project
-curl -L -o pokit-starter-v0.1.0.tar.gz \
-  https://github.com/dongwonlee222/POKit2/releases/download/v0.1.0/pokit-starter-v0.1.0.tar.gz
-tar -xzf pokit-starter-v0.1.0.tar.gz
+curl -L -o pokit-starter-v0.2.1.tar.gz \
+  https://github.com/dongwonlee222/POKit2/releases/download/v0.2.1/pokit-starter-v0.2.1.tar.gz
+tar -xzf pokit-starter-v0.2.1.tar.gz
 pokit="$PWD"
 node scripts/pokit-runner.mjs "$pokit"
 node scripts/pokit-doctor.mjs
@@ -60,9 +60,9 @@ node scripts/pokit-doctor.mjs
 mkdir my-project
 cd my-project
 Invoke-WebRequest `
-  -Uri "https://github.com/dongwonlee222/POKit2/releases/download/v0.1.0/pokit-starter-v0.1.0.tar.gz" `
-  -OutFile "pokit-starter-v0.1.0.tar.gz"
-tar -xzf pokit-starter-v0.1.0.tar.gz
+  -Uri "https://github.com/dongwonlee222/POKit2/releases/download/v0.2.1/pokit-starter-v0.2.1.tar.gz" `
+  -OutFile "pokit-starter-v0.2.1.tar.gz"
+tar -xzf pokit-starter-v0.2.1.tar.gz
 $env:pokit = (Get-Location).Path
 node scripts/pokit-runner.mjs $env:pokit
 node scripts/pokit-doctor.mjs

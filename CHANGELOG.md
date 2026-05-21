@@ -4,6 +4,17 @@
 
 - Package registry publish is not included.
 
+## [0.2.1] - 2026-05-21
+
+### Added
+
+- **Sprint Close Summary Format Standard** (POK-063) — `.ai-os/standards/communication.md`에 스프린트/릴리즈 종료 시점의 7-단계 종합 정리 구조 추가. 세션 종료 라이프사이클 카드(`🧭`, 단일 세션)와 스프린트 종료 종합 정리(cross-session)를 명시적으로 구분.
+
+### Patch Boundary
+
+- Documentation-only patch. Runtime behavior, runner, doctor, manifest contract 변경 없음.
+- `starter_version: 0.2.0 → 0.2.1`. Contract version은 0.2.0 유지.
+
 ## [0.2.0] - 2026-05-21
 
 ### Added
