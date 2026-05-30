@@ -1,64 +1,72 @@
 # Release Checklist
 
+## Reusable Release Readiness
+
+Every release Harness Issue must include README freshness in its Acceptance Criteria or Gate section before external release actions.
+
+- [ ] README freshness confirmed against the current starter surface.
+- [ ] README install commands point to the public `dongwonlee222/POKit2` repository only.
+- [ ] README explains the sanitized starter boundary.
+- [ ] README explains issue workflow, verification layers, file structure, runtime setup, and archive instructions.
+- [ ] README does not claim package-registry, hosted service, or unproven runtime support.
+- [ ] Public starter scan confirms no real issues, specs, memory, run logs, receipts, private paths, secrets, or Dongwon-specific work artifacts are included.
+
 ## Release Identity
 
-- Version: `v0.1.0`
-- Type: stable
-- Date: 2026-05-19
-- Status before external actions: `prerelease_published`
+- Version: `v0.12.0-rc.1`
+- Type: release candidate
+- Date: 2026-05-30
+- Status before external actions: `pending`
 
-This promotes the public `v0.1.0-rc.1` starter-only prerelease to stable `v0.1.0`.
+This prepares a public POKit2 starter release candidate. External install QA must run against this artifact before a stable `v0.12.0` claim.
 
 ## Artifact
 
-- File: `release/pokit-starter-v0.1.0.tar.gz`
-- Byte size: `15492`
-- SHA-256: `844b548a8ff920850d911f2e0e4991103c7b9c10ea5acd07407107826a730d9d`
+- File: `release/pokit-starter-v0.12.0-rc.1.tar.gz`
 - Source boundary: `starter-manifest.yaml` include entries only
-- Mapping: `starter/.ai-os/**` -> `.ai-os/**`; `starter/scripts/**` -> `scripts/**`
+- Mapping: `starter/.ai-os/**` -> `.ai-os/**`; `starter/.claude/**` -> `.claude/**`; `starter/scripts/**` -> `scripts/**`
+- Public target repository: `dongwonlee222/POKit2`
 
-The checksum and byte size must be reverified again immediately before upload.
+Record byte size and SHA-256 again immediately before upload if the archive is rebuilt.
 
 ## Preflight
 
-- [x] `node scripts/pokit-doctor.mjs`
+- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.12.0-rc.1.tar.gz`
 - [x] `node scripts/pokit-starter-self-test.mjs`
-- [x] `node --test tests/pokit-starter.test.mjs tests/starter-bundle.test.mjs tests/release-governance.test.mjs`
-- [x] `shasum -a 256 release/pokit-starter-v0.1.0.tar.gz`
-- [x] Stable archive contents match mapped manifest output
-- [x] Final stable archive safety scan finds no private paths, secrets, run logs, event receipts, or production history
+- [x] Extracted archive runner passes.
+- [x] Extracted archive doctor passes.
+- [x] Focused starter/public README checks pass.
+- [ ] `node --test tests/*.mjs`
+- [ ] `node scripts/pokit-doctor.mjs`
+- [ ] `git diff --check`
+- [x] Archive safety scan finds no private paths, secrets, run logs, event receipts, real issue history, or real sprint memory.
 
 ## External Actions
 
-- [x] Stable promotion commit scope confirmed
-- [x] GitHub remote target confirmed: `dongwonlee222/POKit2`
-- [x] No existing remote `v0.1.0` tag or GitHub release before creation
-- [x] Tag name confirmed: `v0.1.0`
-- [x] Branch pushed to approved remote
-- [x] Tag pushed to approved remote
-- [x] GitHub release created with title `POKit Starter v0.1.0`
-- [x] GitHub release is not marked prerelease
-- [x] Archive uploaded to the GitHub release
-- [x] Checksum visible in release notes
+- [ ] Public repository target confirmed: `dongwonlee222/POKit2`
+- [ ] No accidental push to private development repo as the public install source.
+- [ ] Release candidate tag confirmed.
+- [ ] Public README updated.
+- [ ] Release archive attached or install path documented.
+- [ ] External install test can use the public artifact/path.
 
-## Explicit Non-actions
+## Explicit Non-Actions
 
-- No package registry publish unless separately confirmed.
-- No full development repo publish.
+- No npm, pip, Homebrew, Docker, or package-registry publish.
 - No hosted service launch.
-- No external adapter launch.
-- No `released` state claim before remote, tag, release, and upload evidence exists.
+- No claim that Codex, Claude, or Antigravity support is fully proven without fresh runtime proof.
+- No stable `v0.12.0` release claim before external install QA.
 
 ## GitHub Repository Metadata
 
 Recommended description:
 
 ```text
-Local-first PM/PO AI Harness using .ai-os as source of truth.
+Local-first AI work harness for issue-driven PO/product work.
 ```
 
 Recommended topics:
 
 ```text
-ai, product-management, po, agent, local-first, starter, harness
+ai, product-management, po, agents, local-first, starter, harness, issue-driven
 ```

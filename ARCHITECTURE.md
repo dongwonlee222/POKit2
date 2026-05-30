@@ -1,102 +1,135 @@
 # Architecture
 
-POKit Starter is a local-first PM/PO AI Harness. It keeps project state in repository files so a human PO and an AI agent can restart work, inspect evidence, and decide next actions without relying on hidden chat memory.
+POKit2 is a local-first AI work harness. It keeps issue state, sprint decisions, verification evidence, and memory in repository files instead of hidden chat history.
 
-## Source of Truth
+## Source Of Truth
 
 `.ai-os/` is the source of truth.
 
-- `current.md` restores the active work surface.
-- `status-board.md` summarizes the current layer, issue, gate state, and next action.
-- `issue-index.md` lists durable Harness Issues.
-- `artifact-index.md` lists important outputs.
-- `memory/session/handoff.md` carries cumulative recovery context.
-- `memory/ai-failures/` records reusable failure-prevention rules.
-- `standards/` holds communication, artifact, agent, visualization, and writing rules.
+```text
+.ai-os/
+|-- current.md
+|-- status-board.md
+|-- issue-index.md
+|-- artifact-index.md
+|-- memory/
+|-- standards/
+`-- POK-001.md
+```
+
+Key roles:
+
+- `current.md`: active project, issue, gate state, next action.
+- `status-board.md`: compact status surface.
+- `issue-index.md`: durable issue index.
+- `artifact-index.md`: important output index.
+- `memory/session/handoff.md`: recovery context.
+- `memory/ai-failures/`: failure memory and prevention rules.
+- `standards/`: communication, visualization, agent, artifact, and writing rules.
 
 ## Runtime Flow
 
 ```text
-User says start
-  -> Agent reads AGENTS.md
-  -> Agent reads .ai-os/current.md
-  -> Agent follows start_read_order
-  -> Agent reports active issue, gate state, and next action
-  -> Durable work starts only after a Harness Issue exists
-  -> Verification evidence is recorded before gate claims
+User says "포킷 시작"
+  -> runtime reads AGENTS.md
+  -> AGENTS.md points to .ai-os/current.md
+  -> runner restores active issue and gate state
+  -> durable work starts only through a Harness Issue
+  -> doctor/tests/evals/receipts/QA provide evidence
+  -> gate evidence and handoff are recorded
 ```
 
-The starter begins at `POK-001`. A real project should change the namespace and issue content to match its own product or project key.
+The starter begins at `POK-001`. A real project should rename the namespace and replace the seed issue with its own first issue.
 
-## MVP Scope
+## Issue Flow
 
-Included:
+```text
+Backlog Refinement
+  -> definition readiness
+  -> issue execution
+  -> verification evidence
+  -> gate decision
+  -> next issue
+```
 
-- L0 startup recovery.
-- L1 single-file Harness Issue.
-- L2-entry memory loop and failure-prevention entry.
-- Local runner and doctor scripts.
-- Public-safe starter archive.
+The main session owns state, integration, verification, metrics, and gate claims. Subagents and workers can produce scoped evidence, but they do not pass gates by themselves.
 
-Excluded:
+## Skills And Commands
 
-- Hosted SaaS.
-- Web dashboard.
-- Required Linear, GitHub, or Slack adapter.
-- Semantic search.
-- Automatic multi-agent orchestration.
-- Package registry distribution.
-- First-class epic artifact support.
+The starter includes skill and command setup surfaces under `.claude/`.
 
-## v0.2.0 Additions
+```text
+.claude/
+|-- commands/
+|   |-- pokit.backlog.md
+|   |-- pokit.clarify.md
+|   |-- pokit.issue.md
+|   `-- pokit.next.md
+|
+`-- skills/
+    |-- pokit-backlog/
+    |-- pokit-clarify/
+    |-- pokit-issue/
+    `-- pokit-next/
+```
 
-v0.2.0 keeps the L0/L1/L2 boundary intact while adding PO decision-tracking surfaces and runtime safety contracts.
+For Codex, copy `.claude/skills/pokit-*` into `~/.codex/skills/` or `$CODEX_HOME/skills/`.
 
-### PO Decision Tracking Surfaces
+## Verification Layers
 
-- `.ai-os/sprints/<sprint>/release-scope.yaml` — accepted project-owned issue membership for a sprint. Source-of-truth for what is in the sprint.
-- `.ai-os/sprints/<sprint>/backlog.md` — read-only derived view grouped by project and status. Reflects POK frontmatter, not edited directly.
-- Status enum (`scoped / candidate / accepted / in_progress / gate_passed / dropped`) replaces the previous dual issue/todo split.
-- Lifecycle cards (`🚀 시작 / 🔄 진행 / ✅ 완료 / ⚠️ 확인 필요 / 🧭 종료`) are display-only PO/PM response surfaces; they never approve durable work.
+POKit2 uses multiple verification layers:
 
-### Agent Profile Dispatcher
-
-- POK frontmatter `agent_profile` (planner/coder/reviewer/data-analyst) maps to permission level (`propose_only / write_scoped / read_only`) and worker kind via `scripts/lib/agent-profile-dispatcher.mjs`.
-- Runtime fields (`worker_kind`, `model_tier`, `runtime_preference`) are dispatcher output, not POK source-of-truth.
-- Concrete provider model names resolve from `pokit.config.yaml` at runtime; POK files never carry vendor model identifiers.
-
-### Runtime Layout
-
-- `scripts/lib/lifecycle-card-renderer.mjs` — open-right ASCII renderer for startup/close cards.
-- `scripts/lib/agent-profile-dispatcher.mjs` — dispatch contract for agent_profile.
-- `scripts/lib/status-enum.mjs` — status enum source-of-truth + `deriveStatus` auto-derive.
-- `scripts/lib/optional-fields.mjs` — optional POK fields validator (`depends_on`, `agent_profile`, `goal`, `ai_self_verify`).
-- `scripts/pokit-runner.mjs` — startup preflight (lightweight, no doctor scan; status from `current.gate_state`).
-- `scripts/pokit-doctor.mjs` — full audit for explicit CLI / pre-commit / CI / gate-claim.
-
-### Test Infrastructure (dev-only, not in starter)
-
-- `tests/lib/test-fixtures.mjs` — dynamic read helpers (`getCurrentState`, `getActiveIssue`, `getNextAction`, `getActiveIssueFrontmatter`). Tests read `.ai-os/current.md` instead of hardcoding `POK-XXX` literals so gate advances do not break the suite.
-- `.ai-os/standards/test-standard.md` — dynamic-read pattern standard backed by AFR-004 prevention rule.
-
-### Startup Boundary
-
-- Startup reads `AGENTS.md`, `.ai-os/current.md`, `.ai-os/memory/session/handoff.md`, and `.ai-os/standards/communication.md` only.
-- Startup does not run the full test suite, JSONL parse, gate evidence collection, release packaging checks, issue mutation, release-scope mutation, external writes, or archive/tag/publish actions.
-- `runPreflight` readFile count is ≤5 regardless of how many POK files exist.
+| Layer | Purpose |
+|---|---|
+| doctor | Structural, state, gate, and contract checks. |
+| tests | Regression checks for scripts and documented behavior. |
+| evals | Agent judgment checks. |
+| receipts | Routing, skill, metrics, and release audit evidence. |
+| QA | Install, first-run, and external user validation. |
 
 ## Packaging Boundary
 
-`starter-manifest.yaml` is the starter packaging boundary. Packaging is include-only.
+`starter-manifest.yaml` is the public starter packaging boundary. Packaging is include-only.
 
-- `starter/.ai-os/**` is repository template source.
-- In the starter archive, those files are materialized as `.ai-os/**`.
-- `starter/scripts/**` is materialized as `scripts/**`.
-- Root `.ai-os/**` production history is not copied into the starter archive.
-- Run logs, event receipts, personal paths, secrets, local aliases, and private account state are excluded.
+- Files listed in `include:` are copied.
+- `starter/.ai-os/**` is materialized as `.ai-os/**`.
+- Root development `.ai-os/**` is never copied into the public starter.
+- Real issues, specs, sprint memory, run logs, event receipts, private links, personal paths, secrets, local runtime settings, release outputs, and distribution artifacts are excluded.
+
+## Starter Versus Development Repository
+
+The public POKit2 repository is a starter kit, not the development-history repository.
+
+Included:
+
+- method and harness docs
+- seed `.ai-os` state
+- first issue seed
+- public runtime entrypoints
+- core scripts
+- skill setup surfaces
+
+Excluded:
+
+- Dongwon's real issue history
+- real sprint/release memory
+- live handoff/current state
+- run metrics and event receipts
+- private development repo links
+- local `.codex`, `.claude/settings.local.json`, and `.modu-harness`
 
 ## Release Boundary
 
-`v0.1.0` is the first stable starter release. It follows the public `v0.1.0-rc.1` prerelease and keeps the same starter-only publication boundary.
+A README update or starter archive is not itself a release claim.
 
-Stable release claims require recorded Git commit, tag, push, GitHub release, and uploaded archive evidence under the active release issue.
+Release claims require:
+
+- current release issue
+- archive path
+- checksum and byte size
+- starter self-test
+- doctor pass
+- diff check
+- explicit external action evidence when publishing
+
+External install QA runs after the public starter release candidate is prepared.

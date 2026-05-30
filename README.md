@@ -1,83 +1,40 @@
-# POKit Starter
+# POKit2
 
-POKit helps AI-assisted product work survive beyond chat history.
+POKit2 is a local-first AI work harness for PO-led product work and PO-led AI product work.
 
-Start with natural language. Keep the source of truth in your repo. Stop AI from claiming "done" without evidence.
-
-POKit is a local-first AI Harness for PMs and POs working with Codex, Claude, or Antigravity. It turns requests like "POKit 시작하자", "이 고민을 이슈로 잡아줘", and "완료 가능한지 확인해줘" into a repo-native workflow where issues, evidence, QA, gates, memory, and next actions live under `.ai-os`.
-
-No hosted dashboard, no required SaaS account, no CLI to learn first. Copy the starter into a project, ask naturally, and let `.ai-os` become the source of truth.
-
-## Why POKit
-
-AI product work often breaks in the same places:
-
-- The previous session's context disappears into chat history.
-- A todo is checked off, but the real issue state is unclear.
-- "Done" means the agent said so, not that evidence was checked.
-- The same AI mistake repeats because it never became a prevention rule.
-- A PO wants structure without setting up Linear, Slack, GitHub automation, or a hosted tool first.
-
-POKit exists to make that work recoverable, verifiable, and ready for the next session.
+It turns rough requests into issue-driven work, keeps state in your repository, and blocks "done" claims until there is fresh evidence.
 
 ```text
-Natural language request
+request
+  -> backlog refinement
   -> Harness Issue
-  -> Scoped work
-  -> Evidence
-  -> Gate
-  -> Memory / handoff
-  -> Next session can recover
+  -> scoped execution
+  -> verification evidence
+  -> gate decision
+  -> memory / handoff
+  -> next issue
 ```
 
-## Quick Start
+POKit2 is not a hosted dashboard and it is not a package-registry install. The public repository is a sanitized starter kit: it contains the method, harness, seed state, scripts, and setup surfaces needed to start a new project. It does not contain the development repository's real issues, specs, sprint memory, run logs, receipts, private links, or personal paths.
 
-POKit Starter v0.5.0 is distributed as a starter archive. It is not an npm, pip, Homebrew, Docker, or package-registry install.
+## Quick Install
 
-### Option A: GitHub UI
+### Option A. GitHub Release Archive
 
-1. Open the [v0.5.0 release](https://github.com/dongwonlee222/POKit2/releases/tag/v0.5.0).
-2. Download `pokit-starter-v0.5.0.tar.gz`.
-3. Extract it into a fresh project folder.
-4. Ask your agent: `POKit 시작하자`.
-
-### Option B: macOS / Linux
+Use this for a fresh project.
 
 ```bash
 mkdir my-project
 cd my-project
-curl -L -o pokit-starter-v0.5.0.tar.gz \
-  https://github.com/dongwonlee222/POKit2/releases/download/v0.5.0/pokit-starter-v0.5.0.tar.gz
-tar -xzf pokit-starter-v0.5.0.tar.gz
-pokit="$PWD"
-node scripts/pokit-runner.mjs "$pokit"
+
+VERSION=v0.12.0-rc.1
+curl -L -o pokit-starter.tar.gz \
+  "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
+
+tar -xzf pokit-starter.tar.gz
+node scripts/pokit-runner.mjs "포킷 시작"
 node scripts/pokit-doctor.mjs
 ```
-
-### Option C: Windows PowerShell
-
-```powershell
-mkdir my-project
-cd my-project
-Invoke-WebRequest `
-  -Uri "https://github.com/dongwonlee222/POKit2/releases/download/v0.5.0/pokit-starter-v0.5.0.tar.gz" `
-  -OutFile "pokit-starter-v0.5.0.tar.gz"
-tar -xzf pokit-starter-v0.5.0.tar.gz
-$env:pokit = (Get-Location).Path
-node scripts/pokit-runner.mjs $env:pokit
-node scripts/pokit-doctor.mjs
-```
-
-Use PowerShell, not Command Prompt. Modern Windows includes `tar`; if it is missing, extract the archive with 7-Zip and then run the Node checks from the extracted folder.
-
-### Option D: Clone Source Repo
-
-```bash
-git clone https://github.com/dongwonlee222/POKit2.git my-project
-cd my-project
-```
-
-Use clone only if you want the source repository docs and release history. For normal starter use, prefer the release archive.
 
 Expected result:
 
@@ -87,238 +44,335 @@ doctor: pass
 active issue: POK-001
 ```
 
-## Runtime Setup
+### Option B. Clone The Public Starter
 
-POKit works from the repo entrypoints (`AGENTS.md`, `CLAUDE.md`, `ANTIGRAVITY.md`) and can also use runtime-specific skills.
-
-### Codex
-
-To make Codex and Codex subagents automatically recognize `pokit-issue`, install a Codex-facing skill:
+Use this if you want the public starter files as a Git repository.
 
 ```bash
-mkdir -p ~/.codex/skills/pokit-issue
-cp .claude/skills/pokit-issue/SKILL.md ~/.codex/skills/pokit-issue/SKILL.md
+git clone https://github.com/dongwonlee222/POKit2.git my-project
+cd my-project
+node scripts/pokit-runner.mjs "포킷 시작"
+node scripts/pokit-doctor.mjs
 ```
 
-Then restart Codex or open a fresh `codex exec` session and ask:
+### Option C. Manual Copy
 
-```text
-POK-100 시작
+Use manual copy only when you understand the starter boundary.
+
+Copy the public starter files into your project, then run:
+
+```bash
+node scripts/pokit-runner.mjs "포킷 시작"
+node scripts/pokit-doctor.mjs
 ```
 
-Codex should report that it will use `pokit-issue`. See `docs/runtime/codex.md` for verification and troubleshooting.
+Do not copy a development repository's live `.ai-os` directory into a new project. That would copy someone else's issues, memory, run logs, and gate history.
 
-## How It Works
+## Runtime Setup
+
+The starter includes repo entrypoints for agent runtimes:
 
 ```text
-You
- |
- |  "POKit 시작하자"
- v
-Codex / Claude / Antigravity
- |
- |  reads startup rules
- v
 AGENTS.md
- |
- |  points to
- v
-.ai-os/current.md
- |
- |  restores
- v
-active issue + gate state + next action
- |
- |  works through
- v
-.ai-os/POK-001.md
- |
- |  verifies with
- v
-runner / doctor / gate evidence
- |
- |  leaves
- v
-handoff for the next session
+CLAUDE.md
+ANTIGRAVITY.md
 ```
 
-## What You Get
+It also includes the POKit skill surfaces under `.claude/skills` and `.claude/commands`.
+
+For Codex, install the skills into your Codex skill directory:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R .claude/skills/pokit-* ~/.codex/skills/
+```
+
+If you use a custom `CODEX_HOME`:
+
+```bash
+mkdir -p "$CODEX_HOME/skills"
+cp -R .claude/skills/pokit-* "$CODEX_HOME/skills/"
+```
+
+Then restart Codex or open a fresh session from the project root.
+
+For Claude Code, keep `.claude/commands` and `.claude/skills` in the repository and open Claude Code from the project root.
+
+Runtime support should be claimed only after real discovery, trigger, and execution proof. Skill files are setup surfaces; gate completion still requires fresh verification evidence.
+
+## First Run
+
+Start with natural language:
+
+```text
+포킷 시작
+```
+
+The runner restores:
+
+- active project
+- active issue
+- gate state
+- next action
+- startup context budget
+
+Durable work should not start without a Harness Issue. The starter begins with `POK-001`, a seed issue that you should replace with your own project namespace and first real issue.
+
+## POKit Principles
+
+POKit2 favors issue-driven work, issue-per-durable-change, small scoped changes, tests before gate claim, no unrelated refactor, public-safe starter content, and review evidence before completion.
+
+## Philosophy
+
+POKit2 is built around a few rules:
+
+- `.ai-os` is the source of truth.
+- Durable work belongs to a Harness Issue.
+- A gate is not passed because an agent says it is done.
+- Fresh verification evidence is required before completion claims.
+- The PO owns scope, approval, and release claims.
+- Subagent output is input evidence, not final proof.
+- Failure patterns should become future prevention rules.
+- Public starter content must stay free of private work history.
+
+The goal is not ceremony. The goal is to keep AI work recoverable, inspectable, and hard to falsely complete.
+
+## The PO Workflow
+
+```text
+request -> Backlog Refinement -> first recommended task -> readiness -> issue execution -> gate evidence
+```
+
+The PO can always choose "not now" when a recommendation is not ready.
+
+## How POKit2 Works
+
+```text
+User
+  |
+  |  "포킷 시작"
+  v
+Agent runtime
+  |
+  |  reads
+  v
+AGENTS.md
+  |
+  |  restores
+  v
+.ai-os/current.md
+  |
+  |  follows
+  v
+Harness Issue
+  |
+  |  verifies
+  v
+doctor / tests / evals / receipts / QA
+  |
+  |  records
+  v
+memory + handoff
+```
+
+## File Structure and Architecture
 
 ```text
 project/
 |-- AGENTS.md
-|     Agent startup rule: read .ai-os/current.md first
-|
 |-- CLAUDE.md
-|     Claude Code entrypoint: imports AGENTS.md
-|
 |-- ANTIGRAVITY.md
-|     Antigravity entrypoint: imports AGENTS.md
-|
 |-- README.md
 |-- ARCHITECTURE.md
+|-- RELEASE.md
+|-- pokit.config.yaml
+|
+|-- .claude/
+|   |-- commands/
+|   `-- skills/
 |
 |-- scripts/
-|   |-- pokit-runner.mjs    Startup/state preflight
-|   `-- pokit-doctor.mjs    Structure and contract checks
+|   |-- pokit-runner.mjs
+|   `-- pokit-doctor.mjs
 |
 `-- .ai-os/
-    |-- current.md          Active issue, gate state, next action
-    |-- status-board.md     Small human-readable status board
-    |-- issue-index.md      Harness Issue list
-    |-- artifact-index.md   Important docs and release artifacts
-    |-- POK-001.md          First Harness Issue example
-    |
-    |-- standards/          Communication, artifacts, agents, writing
-    |
-    `-- memory/
-        |-- session/
-        |   `-- handoff.md  Recovery note for the next session
-        |
-        `-- ai-failures/
-            |-- failure-index.md style router
-            `-- prevention-rules.md
+    |-- current.md
+    |-- status-board.md
+    |-- issue-index.md
+    |-- artifact-index.md
+    |-- memory/
+    |-- standards/
+    `-- POK-001.md
 ```
 
-## What's New in v0.2.0
+Development repositories may use project-owned issue paths such as `projects/<project>/issues/POK-XXX.md`. The sanitized starter begins with a seed issue and can be migrated to a project-owned path as the project grows.
 
-v0.2.0 adds PO decision-tracking surfaces while keeping the natural-language entrypoint and `.ai-os` source-of-truth principles unchanged.
+## Core Skills
 
-### Lifecycle Cards
+| Skill | Purpose |
+|---|---|
+| `pokit.backlog` | Turn rough requests into work candidates, readiness, questions, and first recommended issue. |
+| `pokit.clarify` | Ask focused questions when acceptance criteria or scope are unclear. |
+| `pokit.issue` | Execute one ready Harness Issue with workflow trace, verification, and gate evidence. |
+| `pokit.next` | Move from a `gate_passed` issue to the next active issue. |
 
-Five PO/PM response moments now render as open-right ASCII cards:
+Slash-command equivalents:
 
-- `🚀 시작 / 이어서` — session start, restores active issue and next action.
-- `🔄 진행` — work in progress.
-- `✅ 완료` — work or gate pass, with changes and verification.
-- `⚠️ 확인 필요` — blocked, needs approval.
-- `🧭 종료` — session close with handoff.
+- `/pokit.backlog`
+- `/pokit.clarify`
+- `/pokit.issue`
+- `/pokit.next`
 
-Cards are **display-only**. A card never approves status transitions, includes work in `release-scope.yaml`, or marks a gate passed.
-
-### Sprint Backlog and Release Scope
+The user-facing flow is intentionally small:
 
 ```text
-.ai-os/sprints/<sprint>/
-  release-scope.yaml   accepted project-owned issue membership (source of truth)
-  backlog.md           read-only derived view grouped by project + status
+rough request -> Backlog Refinement -> issue execution -> gate -> next issue
 ```
 
-Status enum: `scoped / candidate / accepted / in_progress / gate_passed / dropped`. Issue-and-todo dual lists are replaced with a single POK + status model.
+## Backlog Refinement
 
-### Agent Profile Dispatcher
+Backlog Refinement turns rough requests into work candidates, readiness decisions, and the first recommended task before execution starts.
 
-POK frontmatter `agent_profile` (`planner / coder / reviewer / data-analyst`) maps to permission level and worker assignment at runtime. Permission, worker kind, and model tier are dispatcher outputs, not POK source-of-truth.
+## Lifecycle Cards and ASCII Visualization
 
-### Runner Commands
+Cards are display-only. They help the PO see current state, next action, and approval boundaries, but they do not approve status transitions, release-scope inclusion, durable work, external writes, or gate pass.
 
-Display-only command contracts:
+## Core Features
 
-- `/pokit add` — propose a new issue (lifecycle card output).
-- `/pokit dispatch <POK-XXX>` — request runner assignment for an issue.
-- `/pokit gate <POK-XXX>` — request gate evidence summary.
+- Issue-driven work with project-owned Harness Issues.
+- Natural-language startup and progress phrases.
+- Display-only lifecycle cards for PO decisions.
+- Definition readiness before execution.
+- Workflow Trace for execution evidence.
+- Memory and handoff for session recovery.
+- Sprint and release scope files for planning.
+- Doctor checks for structural and gate drift.
+- Metrics and receipts for auditability.
+- Optional worker fan-out for parallel subagent work.
 
-Commands surface proposed actions. Approval remains with the human PO.
+## Verification Layers
 
-### Startup IO Budget
+POKit2 uses several verification layers because each layer catches a different class of failure.
 
-`runPreflight` now reads ≤5 files at startup (down from ~125). Doctor remains authoritative for explicit CLI, pre-commit, CI, and gate-claim invocations.
+| Layer | What It Protects |
+|---|---|
+| `doctor` | State, structure, gate, and contract drift. |
+| `tests` | Code and documented behavior regressions. |
+| `evals` | Agent judgment failures that tests cannot inspect directly. |
+| `receipts` | Routing, skill invocation, metrics, and release evidence. |
+| `QA` | Install, first-run, and external user validation. |
 
-### Failure Memory and Test Brittleness
+## Issue-Driven Methodology
 
-- AFR-003 catches stale derived artifacts (backlog, release-scope, spec, roadmap, session memory) after gate-passed work.
-- AFR-004 catches hardcoded active-issue references in tests. The `tests/lib/test-fixtures.mjs` helper provides dynamic reads so gate advances do not break the suite.
+A Harness Issue is the unit of durable work.
 
-## Core Loop
+It usually records:
+
+- problem and goal
+- evidence
+- acceptance criteria
+- QA plan
+- gate evidence
+- workflow trace
+- memory
+
+This gives the PO a simple question at every step: "Is this issue ready, and what evidence says it is done?"
+
+## Parallel Workers And Model Routing
+
+POKit2 can split work into Worker Tasks when the issue is large enough and scopes are disjoint.
 
 ```text
-Start
-  |
-  v
-Read .ai-os context
-  |
-  v
-Pick or create a Harness Issue
-  |
-  v
-Do scoped work
-  |
-  v
-Record evidence
-  |
-  v
-Run gate check
-  |
-  +-- fail --> report blocker + next action
-  |
-  +-- pass --> update memory + handoff
-  |
-  v
-Next session can recover
+main session
+  |-- docs_worker
+  |-- code_worker
+  |-- review_worker
+  `-- qa_worker
 ```
 
-## Core Rules
+The main session still owns integration, state, verification, metrics, and gate claims. Workers help produce evidence; they do not independently pass gates.
 
-- `.ai-os` is the source of truth.
-- Durable work needs a Harness Issue.
-- Completion claims need fresh verification evidence.
-- Subagent output is input evidence, not final proof.
-- Failure patterns should become prevention rules for future runs.
-- Public starter content must not include secrets, personal paths, private company assumptions, production history, run logs, or event receipts.
+POKit2 can also route worker plans by runtime and model capability. For example, a small issue can stay with a single agent, while larger disjoint work can fan out to multiple workers.
 
-Code management rules:
+## Memory Model
 
-- issue-per-durable-change: code, docs, contract, and release work belong to one Harness Issue.
-- small scoped changes: keep each change reviewable.
-- tests before gate claim: verify before saying a behavior, contract, or release is done.
-- no unrelated refactor: avoid cleanup that is not needed for the active issue.
-- public-safe starter content: keep starter files free of secrets, private paths, company assumptions, production history, run logs, and event receipts.
-- review evidence before completion: delegated agent output is evidence, not the final completion proof.
+POKit2 separates memory by purpose:
 
-## Boundaries
+- `current.md`: the active work surface.
+- `status-board.md`: a short status view.
+- `memory/session/handoff.md`: recovery context for the next session.
+- `memory/session/session-summary.md`: human-readable close snapshot.
+- `memory/ai-failures/`: reusable failure patterns and prevention rules.
+- `issue-index.md` and `artifact-index.md`: navigable project memory.
 
-POKit Starter is intentionally small.
+The starter includes only seed memory. Real project memory is created by your project after installation.
+
+## Sprint And Release Flow
+
+```text
+scope spec
+  -> accepted candidates
+  -> issue execution
+  -> gate evidence
+  -> retro / release notes
+  -> starter or release artifact
+```
+
+Release claims should be explicit. README refresh work does not create a release, tag, upload, package publish, or external deployment. Each release issue should include README freshness in its Acceptance Criteria or Gate section.
+
+## Sanitized Starter Boundary
 
 Included:
 
-- Local-first `.ai-os` starter structure
-- Natural-language startup path for Codex/Claude/Antigravity
-- Single-file Harness Issue example
-- Runner and doctor helper scripts
-- Session handoff and failure-memory entry point
-- Lifecycle card response standard (v0.2.0)
-- Sprint backlog and release-scope artifacts (v0.2.0)
-- Agent profile dispatcher and runner command contracts (v0.2.0)
+- public README and architecture docs
+- seed `.ai-os` state
+- core standards
+- first seed issue `POK-001`
+- runner and doctor scripts
+- required config
+- runtime skill setup surfaces
 
-Not included:
+Excluded:
 
-- Hosted SaaS
-- Web dashboard
-- Required Linear, GitHub, Slack, Jira, or Notion integration
-- Package registry distribution
-- Semantic search
-- Automatic multi-agent orchestration
-- First-class epic artifact support
+- real user-created issues
+- real specs and sprint/release work memory
+- current development handoff state
+- run metrics
+- event receipts
+- private repo links
+- personal paths
+- secrets
+- `.codex`, local `.claude` settings, `.modu-harness`
+- release/dist outputs
 
-## Development
+This repository is the starter surface, not the private development history.
 
-If you have cloned the source repository, run the full test suite and doctor check with:
+## Limitations
+
+POKit2 currently does not provide:
+
+- hosted SaaS
+- web dashboard
+- npm, pip, Homebrew, Docker, or package-registry install
+- required Linear, Slack, Jira, Notion, or GitHub adapter
+- semantic/vector search as a shipped starter feature
+- a claim that every runtime is fully proven without fresh proof artifacts
+
+## For Contributors
+
+Source-repo contributors can run:
 
 ```bash
-npm test
-npm run doctor
+node --test tests/*.mjs
+node scripts/pokit-doctor.mjs
+git diff --check
 ```
 
-These commands require Node.js 18+ and no additional dependencies. The test suite runs 240+ unit tests with the built-in `node:test` runner. CI runs the same commands on every push and pull request.
-
-Branch protection note: to require CI passage before merging, enable branch protection rules in GitHub → Settings → Branches → Require status checks → select the `test` job.
-
-**starter-manifest decision (POK-073):** `package.json` is not included in the starter distribution. Starter users may already have a `package.json` in their project; including one would risk overwriting it on update. The `npm test` / `npm run doctor` scripts are documented here and in `ARCHITECTURE.md` for contributors and source-repo users only.
+The starter archive is built from `starter-manifest.yaml` include entries only. `starter/.ai-os/**` maps to `.ai-os/**`, and listed script files map to `scripts/**`.
 
 ## More Docs
 
-- `ARCHITECTURE.md`: structure, runtime flow, and packaging boundary
-- `docs/runtime/codex.md`: Codex skill setup and verification
-- `CHANGELOG.md`: public version history
-- `RELEASE.md`: stable release checklist and evidence
+- `ARCHITECTURE.md`: architecture and packaging boundary
+- `RELEASE.md`: release readiness checklist
+- `CHANGELOG.md`: version history
 - `LICENSE`: MIT license
