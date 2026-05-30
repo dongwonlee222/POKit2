@@ -27,7 +27,7 @@ Use this for a fresh project.
 mkdir my-project
 cd my-project
 
-VERSION=v0.12.0-rc.1
+VERSION=v0.12.0-rc.2
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 
@@ -80,6 +80,8 @@ ANTIGRAVITY.md
 
 It also includes the POKit skill surfaces under `.claude/skills` and `.claude/commands`.
 
+`.claude/commands` and `.claude/skills` are Claude Code's repo-local command and skill surfaces. They are present because Claude Code can discover them directly from the project.
+
 For Codex, install the skills into your Codex skill directory:
 
 ```bash
@@ -97,6 +99,8 @@ cp -R .claude/skills/pokit-* "$CODEX_HOME/skills/"
 Then restart Codex or open a fresh session from the project root.
 
 For Claude Code, keep `.claude/commands` and `.claude/skills` in the repository and open Claude Code from the project root.
+
+For Antigravity, use `ANTIGRAVITY.md` as the entrypoint. Do not assume native POKit skill discovery there until you have runtime-specific proof.
 
 Runtime support should be claimed only after real discovery, trigger, and execution proof. Skill files are setup surfaces; gate completion still requires fresh verification evidence.
 
@@ -168,7 +172,7 @@ Harness Issue
   |
   |  verifies
   v
-doctor / tests / evals / receipts / QA
+doctor / tests / evals / receipts / metrics / retro / QA
   |
   |  records
   v
@@ -193,7 +197,25 @@ project/
 |
 |-- scripts/
 |   |-- pokit-runner.mjs
-|   `-- pokit-doctor.mjs
+|   |-- pokit-doctor.mjs
+|   |-- pokit-issue-create.mjs
+|   |-- pokit-list-issues.mjs
+|   |-- pokit-list-evidence.mjs
+|   |-- pokit-measure-startup.mjs
+|   `-- pokit-sprint-close.mjs
+|
+|-- tests/
+|   `-- starter-smoke.test.mjs
+|
+|-- projects/
+|   `-- <project>/
+|       `-- issues/
+|
+|-- docs/
+|   `-- <project>/
+|
+|-- artifacts/
+|   `-- <project>/
 |
 `-- .ai-os/
     |-- current.md
@@ -201,11 +223,25 @@ project/
     |-- issue-index.md
     |-- artifact-index.md
     |-- memory/
+    |-- sprints/
     |-- standards/
     `-- POK-001.md
 ```
 
-Development repositories may use project-owned issue paths such as `projects/<project>/issues/POK-XXX.md`. The sanitized starter begins with a seed issue and can be migrated to a project-owned path as the project grows.
+Development repositories may use project-owned issue paths such as `projects/<project>/issues/POK-XXX.md`. The sanitized starter ships only empty scaffold markers for `projects/`, `docs/`, `artifacts/`, and `.ai-os/sprints/`; your real issues, documents, and outputs are created after installation.
+
+The starter intentionally does not ship POKit2's full development `scripts/lib` or internal regression suite. It ships standalone user-facing CLI scripts only:
+
+| Command | User Purpose |
+|---|---|
+| `node scripts/pokit-runner.mjs "포킷 시작"` | Restore current issue and lifecycle card. |
+| `node scripts/pokit-doctor.mjs` | Check state, structure, gate, and starter contract drift. |
+| `node scripts/pokit-issue-create.mjs --id POK-001 --title "..." --project my-project` | Create a first real local issue and receipt. |
+| `node scripts/pokit-list-issues.mjs` | List local Harness Issues. |
+| `node scripts/pokit-list-evidence.mjs` | Inspect local event/receipt evidence. |
+| `node scripts/pokit-measure-startup.mjs` | Estimate startup/work-read token budget. |
+| `node scripts/pokit-sprint-close.mjs v0.1.0` | Archive handoff and create a retro template. |
+| `node --test tests/*.mjs` | Run the starter smoke test, not the private development regression suite. |
 
 ## Core Skills
 
@@ -247,7 +283,9 @@ Cards are display-only. They help the PO see current state, next action, and app
 - Memory and handoff for session recovery.
 - Sprint and release scope files for planning.
 - Doctor checks for structural and gate drift.
-- Metrics and receipts for auditability.
+- Receipts for routing, invocation, and release evidence.
+- Metrics for token, time, worker, and verification cost analysis.
+- Retro loops for issue and sprint learning.
 - Optional worker fan-out for parallel subagent work.
 
 ## Verification Layers
@@ -259,8 +297,10 @@ POKit2 uses several verification layers because each layer catches a different c
 | `doctor` | State, structure, gate, and contract drift. |
 | `tests` | Code and documented behavior regressions. |
 | `evals` | Agent judgment failures that tests cannot inspect directly. |
-| `receipts` | Routing, skill invocation, metrics, and release evidence. |
-| `QA` | Install, first-run, and external user validation. |
+| `receipts` | Who/what/when execution evidence: routing, skill invocation, external actions, and release proof. |
+| `metrics` | Token, elapsed time, worker usage, rework, and verification-cost measurement. |
+| `retro` | Issue and sprint learning: plan-vs-actual, failure patterns, and next-process corrections. |
+| `QA` | Install, first-run, and external/manual user validation. |
 
 ## Issue-Driven Methodology
 
@@ -331,6 +371,7 @@ Included:
 - runner and doctor scripts
 - required config
 - runtime skill setup surfaces
+- public scaffold folders for future project issues, docs, artifacts, and sprint state
 
 Excluded:
 
@@ -344,6 +385,8 @@ Excluded:
 - secrets
 - `.codex`, local `.claude` settings, `.modu-harness`
 - release/dist outputs
+- full POKit2 development `scripts/lib`
+- full internal regression `tests`
 
 This repository is the starter surface, not the private development history.
 

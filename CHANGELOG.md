@@ -2,6 +2,25 @@
 
 This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
 
+## [0.12.0-rc.2] - 2026-05-30
+
+### Changed
+
+- README and architecture docs now separate verification layers into `doctor`, `tests`, `evals`, `receipts`, `metrics`, `retro`, and `QA`.
+- Runtime setup now explains why `.claude/commands` and `.claude/skills` are present, and how Codex installs the sanitized skills into `~/.codex/skills` or `$CODEX_HOME/skills`.
+- File structure docs now show the public-safe scaffold folders for future user issues, docs, artifacts, and sprint state.
+
+### Added
+
+- Empty scaffold markers for `projects/`, `docs/`, `artifacts/`, and `.ai-os/sprints/` in the starter archive.
+- Standalone user-facing starter scripts for issue creation, issue listing, evidence listing, startup metrics, and sprint close/retro setup.
+- Minimal `tests/starter-smoke.test.mjs` so users can run a starter-level test without inheriting POKit2's private development regression suite.
+
+### Not Included
+
+- Real user issues, specs, memory, run logs, event receipts, metrics, documents, artifacts, or sprint history.
+- Full development `scripts/lib`, hooks, provider adapters, and internal regression tests.
+
 ## [0.12.0-rc.1] - 2026-05-30
 
 ### Added

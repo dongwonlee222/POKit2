@@ -7,13 +7,17 @@ Every release Harness Issue must include README freshness in its Acceptance Crit
 - [ ] README freshness confirmed against the current starter surface.
 - [ ] README install commands point to the public `dongwonlee222/POKit2` repository only.
 - [ ] README explains the sanitized starter boundary.
-- [ ] README explains issue workflow, verification layers, file structure, runtime setup, and archive instructions.
+- [ ] README explains issue workflow, verification layers, file structure, runtime setup, project scaffold, and archive instructions.
 - [ ] README does not claim package-registry, hosted service, or unproven runtime support.
 - [ ] Public starter scan confirms no real issues, specs, memory, run logs, receipts, private paths, secrets, or Dongwon-specific work artifacts are included.
+- [ ] Verification layers are separated as doctor, tests, evals, receipts, metrics, retro, and QA.
+- [ ] Public scaffold folders contain marker files only, not real project work.
+- [ ] Starter ships user-facing standalone scripts for issue creation, issue listing, evidence listing, startup metrics, sprint retro close, and smoke tests.
+- [ ] Starter does not ship full development `scripts/lib`, hooks, provider adapters, or internal regression tests.
 
 ## Release Identity
 
-- Version: `v0.12.0-rc.1`
+- Version: `v0.12.0-rc.2`
 - Type: release candidate
 - Date: 2026-05-30
 - Status before external actions: `pending`
@@ -22,16 +26,17 @@ This prepares a public POKit2 starter release candidate. External install QA mus
 
 ## Artifact
 
-- File: `release/pokit-starter-v0.12.0-rc.1.tar.gz`
+- File: `release/pokit-starter-v0.12.0-rc.2.tar.gz`
 - Source boundary: `starter-manifest.yaml` include entries only
 - Mapping: `starter/.ai-os/**` -> `.ai-os/**`; `starter/.claude/**` -> `.claude/**`; `starter/scripts/**` -> `scripts/**`
+- User runtime: runner, doctor, issue-create, list-issues, list-evidence, measure-startup, sprint-close, starter smoke test
 - Public target repository: `dongwonlee222/POKit2`
 
 Record byte size and SHA-256 again immediately before upload if the archive is rebuilt.
 
 ## Preflight
 
-- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.12.0-rc.1.tar.gz`
+- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.12.0-rc.2.tar.gz`
 - [x] `node scripts/pokit-starter-self-test.mjs`
 - [x] Extracted archive runner passes.
 - [x] Extracted archive doctor passes.
