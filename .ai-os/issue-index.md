@@ -2,6 +2,5 @@
 
 | Issue | Title | State | Path |
 |---|---|---|---|
-| POK-001 | First Local Harness Issue | scoped | `.ai-os/POK-001.md` |
 
-Use your product or project key for real work. `POK` is a starter example namespace.
+No work issue exists yet. The default `common` project will create `COM-001` first.

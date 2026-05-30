@@ -4,4 +4,4 @@
 |---|---|---|
 | Runtime Entrypoint | agent startup pointer | `AGENTS.md` |
 | Starter Config | version and compatibility source | `pokit.config.yaml` |
-| First Issue | local starter issue | `.ai-os/POK-001.md` |
+| Project Registry | starter project namespace and counter source | `.ai-os/projects.yaml` |

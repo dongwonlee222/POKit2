@@ -1,12 +1,13 @@
 # Status Board
 
 Current layer: L1 Starter Bootstrap
-Current issue: POK-001
-Gate state: pending
-Next action: scope the first local Harness Issue
+Current project: common (COM)
+Current issue: none
+Gate state: idle
+Next action: Create the first common issue with `node scripts/pokit-issue-create.mjs --title "첫 작업"`
 
 ## PO Hierarchy
 
-Project key -> Harness Issue -> Subtask result -> Gate evidence
+Project -> Harness Issue -> Subtask result -> Gate evidence
 
-Epic is a deliberate MVP gap. Recommended follow-up: `POK-EPIC-001 Epic Artifact Contract`.
+The `common` project is the beginner-safe default. Add your own project when you want a separate namespace and issue counter.

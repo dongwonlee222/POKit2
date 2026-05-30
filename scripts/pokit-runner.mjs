@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runDoctor } from './pokit-doctor.mjs';
+import { findIssue, ISSUE_ID_PATTERN } from './pokit-project-contract.mjs';
 
 const POKIT_PHRASES = [
   '$pokit',
@@ -124,19 +125,18 @@ export function classifyPokitCommand(phrase) {
   };
 }
 
-export function resolveIssuePath(issueId) {
-  if (!/^[A-Z][A-Z0-9]*-\d{3}$/.test(issueId ?? '')) {
+export async function resolveIssuePath(issueId, root = process.cwd()) {
+  if (!ISSUE_ID_PATTERN.test(issueId ?? '')) {
     throw new Error(`Invalid POKit issue id: ${issueId}`);
   }
-
-  return `.ai-os/${issueId}.md`;
+  return (await findIssue(root, issueId))?.relativePath ?? `.ai-os/${issueId}.md`;
 }
 
 export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } = {}) {
   const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
   const current = parseFrontmatter(currentText);
   const activeIssue = current.active_issue ?? null;
-  const issuePath = activeIssue ? resolveIssuePath(activeIssue) : null;
+  const issuePath = activeIssue ? await resolveIssuePath(activeIssue, root) : null;
   const issue = issuePath ? await readIssueFrontmatter(root, issuePath) : {};
   const doctorResult = await runDoctor({ root });
   const failures = doctorResult.items.filter((item) => item.status === 'fail');
@@ -216,8 +216,10 @@ export function buildStartupLifecycleCardFields({
         state: [issueStatus, gateState ? `gate ${gateState}` : null].filter(Boolean).join(' / ') || status,
         next: nextAction,
       },
-      input_waiting: {
-        message: '"진행"이라고 말하면 시작합니다.',
+    input_waiting: {
+        message: activeIssue
+          ? '"진행"이라고 말하면 시작합니다.'
+          : '먼저 node scripts/pokit-issue-create.mjs --title "첫 작업" 으로 첫 이슈를 만드세요.',
         guard: '확인 전에는 이슈 생성, 파일 수정, 게이트 실행을 하지 않습니다.',
       },
     },

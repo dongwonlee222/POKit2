@@ -4,9 +4,10 @@ contract_version: 0.1.0
 starter_version: 0.1.0
 canonical_state: bootstrap
 active_sprint: v0.1.0-starter
-active_issue: POK-001
-gate_state: pending
-next_action: scope the first local Harness Issue
+active_project: common
+active_issue: null
+gate_state: idle
+next_action: Create the first common issue with node scripts/pokit-issue-create.mjs --title "첫 작업"
 failure_context: no-prior-failure
 handoff_context: first-session
 updated_at: 2026-05-19
@@ -34,8 +35,8 @@ Read this before durable work, file edits, verification, or gate claims.
 8. `.ai-os/standards/agent-invocation.md`
 9. `.ai-os/standards/artifact-standard.md`
 10. `.ai-os/standards/writing-style.md`
-11. `.ai-os/POK-001.md`
+11. `.ai-os/projects.yaml`
 
 ## Rule
 
-This starter begins from the first local issue. Replace `POK` with your uppercase project key when you define your real namespace, for example `PROD-001`.
+This starter begins with the default `common` project and the `COM` namespace. Create your first issue with `node scripts/pokit-issue-create.mjs --title "첫 작업"`, or create your own project with `node scripts/pokit-project-create.mjs --key my-project --name "My Project" --namespace MYP`.

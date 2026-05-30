@@ -2,6 +2,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findIssue, readRegistry } from './pokit-project-contract.mjs';
 
 const START_READ_ORDER = [
   'AGENTS.md',
@@ -48,6 +49,7 @@ export async function runDoctor({ root = process.cwd() } = {}) {
   const context = { root, activeIssue: null };
 
   await checkCurrent(context, items);
+  await checkProjectRegistry(context, items);
   await checkSessionFiles(context, items);
   if (context.currentText) await checkReadOrder(context, items);
   if (context.activeIssue) await checkActiveIssue(context, items);
@@ -61,6 +63,49 @@ export async function runDoctor({ root = process.cwd() } = {}) {
   };
 }
 
+async function checkProjectRegistry(context, items) {
+  const filePath = '.ai-os/projects.yaml';
+  let registry;
+  try {
+    registry = await readRegistry(context.root);
+  } catch (error) {
+    fail(items, 'project_registry', filePath, 'Project registry is missing or unreadable.', 'Restore .ai-os/projects.yaml with the common project entry.');
+    return;
+  }
+
+  if (!Array.isArray(registry.projects) || registry.projects.length === 0) {
+    fail(items, 'project_registry', filePath, 'Project registry has no projects.', 'Add at least the common / COM project.');
+    return;
+  }
+
+  let hasCommon = false;
+  for (const project of registry.projects) {
+    const valid = /^[a-z][a-z0-9-]*$/.test(project.key ?? '') &&
+      /^[A-Z][A-Z0-9]{1,9}$/.test(project.namespace ?? '') &&
+      Number.isInteger(Number(project.next_number)) &&
+      Number(project.next_number) >= 1;
+    if (!valid) {
+      fail(items, 'project_registry', filePath, `Invalid project registry entry: ${project.key ?? 'unknown'}.`, 'Use key, name, namespace, and next_number >= 1.');
+      return;
+    }
+    if (project.key === 'common' && project.namespace === 'COM') hasCommon = true;
+  }
+
+  if (!hasCommon) {
+    fail(items, 'project_registry', filePath, 'Missing default common / COM project.', 'Add the common project with namespace COM.');
+    return;
+  }
+
+  pass(items, 'project_registry', filePath, 'Project registry is valid.');
+
+  const activeProject = context.currentFrontmatter?.active_project;
+  if (activeProject && !registry.projects.some((project) => project.key === activeProject)) {
+    fail(items, 'active_project', '.ai-os/current.md', `active_project ${activeProject} is not in the project registry.`, 'Run pokit-project-use with a registered project.');
+  } else if (activeProject) {
+    pass(items, 'active_project', '.ai-os/current.md', `active_project ${activeProject} exists in the project registry.`);
+  }
+}
+
 async function checkCurrent(context, items) {
   const filePath = '.ai-os/current.md';
   const currentText = await readOptional(context.root, filePath);
@@ -71,11 +116,12 @@ async function checkCurrent(context, items) {
 
   context.currentText = currentText;
   const frontmatter = parseFrontmatter(currentText);
+  context.currentFrontmatter = frontmatter;
   context.activeIssue = frontmatter.active_issue ?? null;
   pass(items, 'current_exists', filePath, 'current.md exists.');
 
   for (const key of ['schema_version', 'contract_version', 'active_issue', 'next_action']) {
-    if (!frontmatter[key]) {
+    if (!(key in frontmatter) || (key !== 'active_issue' && !frontmatter[key])) {
       fail(items, 'current_frontmatter', filePath, `Missing ${key}.`, `Add ${key} to current.md frontmatter.`);
     }
   }
@@ -118,7 +164,8 @@ async function checkReadOrder(context, items) {
   }
 
   if (context.activeIssue) {
-    const activePath = `.ai-os/${context.activeIssue}.md`;
+    const found = await findIssue(context.root, context.activeIssue);
+    const activePath = found?.relativePath ?? `.ai-os/${context.activeIssue}.md`;
     if (workOrder.includes(activePath)) {
       pass(items, 'work_read_order', activePath, 'Active issue is included.');
     } else {
@@ -128,13 +175,14 @@ async function checkReadOrder(context, items) {
 }
 
 async function checkActiveIssue(context, items) {
-  const filePath = `.ai-os/${context.activeIssue}.md`;
-  const issueText = await readOptional(context.root, filePath);
-  if (issueText === null) {
+  const found = await findIssue(context.root, context.activeIssue);
+  const filePath = found?.relativePath ?? `.ai-os/${context.activeIssue}.md`;
+  if (!found) {
     fail(items, 'active_issue_exists', filePath, 'Active issue file is missing.', `Create or restore ${filePath}.`);
     return;
   }
 
+  const issueText = await readFile(path.join(context.root, filePath), 'utf8');
   pass(items, 'active_issue_exists', filePath, 'Active issue exists.');
   const frontmatter = parseFrontmatter(issueText);
   for (const key of ISSUE_FRONTMATTER_KEYS) {

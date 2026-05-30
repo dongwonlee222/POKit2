@@ -1,0 +1,7 @@
+# POKit2 starter project registry
+# Each project owns its namespace and issue number counter.
+projects:
+  - key: common
+    name: Common
+    namespace: COM
+    next_number: 1

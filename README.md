@@ -27,7 +27,7 @@ Use this for a fresh project.
 mkdir my-project
 cd my-project
 
-VERSION=v0.12.0-rc.2
+VERSION=v0.12.0-rc.3
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 
@@ -41,7 +41,8 @@ Expected result:
 ```text
 runner: pass
 doctor: pass
-active issue: POK-001
+active project: common
+active issue: none yet
 ```
 
 ### Option B. Clone The Public Starter
@@ -120,7 +121,28 @@ The runner restores:
 - next action
 - startup context budget
 
-Durable work should not start without a Harness Issue. The starter begins with `POK-001`, a seed issue that you should replace with your own project namespace and first real issue.
+POKit2 is an issue-driven local AI harness: durable work starts from a Harness Issue, moves through verification, and only then reaches a gate decision.
+
+The starter begins with the default `common` project and `COM` namespace. Create your first issue without choosing an ID:
+
+```bash
+node scripts/pokit-issue-create.mjs --title "첫 작업"
+node scripts/pokit-list-issues.mjs
+node scripts/pokit-issue-use.mjs COM-001
+node scripts/pokit-doctor.mjs
+```
+
+To use your own project and issue counter:
+
+```bash
+node scripts/pokit-project-create.mjs --key my-project --name "My Project" --namespace MYP
+node scripts/pokit-project-use.mjs my-project
+node scripts/pokit-issue-create.mjs --title "첫 작업"
+node scripts/pokit-issue-use.mjs MYP-001
+node scripts/pokit-doctor.mjs
+```
+
+Manual `--id` remains available as an explicit override, but the beginner flow should let the active project choose the next issue number.
 
 ## POKit Principles
 
@@ -198,7 +220,10 @@ project/
 |-- scripts/
 |   |-- pokit-runner.mjs
 |   |-- pokit-doctor.mjs
+|   |-- pokit-project-create.mjs
+|   |-- pokit-project-use.mjs
 |   |-- pokit-issue-create.mjs
+|   |-- pokit-issue-use.mjs
 |   |-- pokit-list-issues.mjs
 |   |-- pokit-list-evidence.mjs
 |   |-- pokit-measure-startup.mjs
@@ -225,7 +250,7 @@ project/
     |-- memory/
     |-- sprints/
     |-- standards/
-    `-- POK-001.md
+    `-- projects.yaml
 ```
 
 Development repositories may use project-owned issue paths such as `projects/<project>/issues/POK-XXX.md`. The sanitized starter ships only empty scaffold markers for `projects/`, `docs/`, `artifacts/`, and `.ai-os/sprints/`; your real issues, documents, and outputs are created after installation.
@@ -236,7 +261,10 @@ The starter intentionally does not ship POKit2's full development `scripts/lib` 
 |---|---|
 | `node scripts/pokit-runner.mjs "포킷 시작"` | Restore current issue and lifecycle card. |
 | `node scripts/pokit-doctor.mjs` | Check state, structure, gate, and starter contract drift. |
-| `node scripts/pokit-issue-create.mjs --id POK-001 --title "..." --project my-project` | Create a first real local issue and receipt. |
+| `node scripts/pokit-project-create.mjs --key my-project --name "My Project" --namespace MYP` | Create a project with its own namespace, folders, and counter. |
+| `node scripts/pokit-project-use.mjs my-project` | Switch the active project. |
+| `node scripts/pokit-issue-create.mjs --title "..."` | Create the next issue in the active project and receipt. |
+| `node scripts/pokit-issue-use.mjs COM-001` | Make an issue active so runner and doctor use it. |
 | `node scripts/pokit-list-issues.mjs` | List local Harness Issues. |
 | `node scripts/pokit-list-evidence.mjs` | Inspect local event/receipt evidence. |
 | `node scripts/pokit-measure-startup.mjs` | Estimate startup/work-read token budget. |
@@ -367,7 +395,7 @@ Included:
 - public README and architecture docs
 - seed `.ai-os` state
 - core standards
-- first seed issue `POK-001`
+- default project registry with `common / COM`
 - runner and doctor scripts
 - required config
 - runtime skill setup surfaces
