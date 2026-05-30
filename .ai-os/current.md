@@ -7,7 +7,7 @@ active_sprint: v0.1.0-starter
 active_project: common
 active_issue: null
 gate_state: idle
-next_action: Create the first common issue with node scripts/pokit-issue-create.mjs --title "첫 작업"
+next_action: Create the first common issue with node scripts/pokit-issue-create.mjs --title <title>
 failure_context: no-prior-failure
 handoff_context: first-session
 updated_at: 2026-05-19

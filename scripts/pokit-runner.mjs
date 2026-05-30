@@ -23,6 +23,7 @@ const RUNNER_COMMAND_CONTRACTS = Object.freeze({
     'target_project',
     'proposed_issue',
     'lifecycle_card',
+    'rendered_lifecycle_card',
     'approval_required',
   ]),
   '/pokit dispatch': Object.freeze([
@@ -30,6 +31,7 @@ const RUNNER_COMMAND_CONTRACTS = Object.freeze({
     'target_issue',
     'runner_assignment',
     'lifecycle_card',
+    'rendered_lifecycle_card',
     'approval_required',
   ]),
   '/pokit gate': Object.freeze([
@@ -37,6 +39,7 @@ const RUNNER_COMMAND_CONTRACTS = Object.freeze({
     'target_issue',
     'required_evidence',
     'lifecycle_card',
+    'rendered_lifecycle_card',
     'approval_required',
   ]),
 });
@@ -120,6 +123,7 @@ export function classifyPokitCommand(phrase) {
       'issue_path',
       'runner_assignment',
       'lifecycle_card',
+      'rendered_lifecycle_card',
       'approval_required',
     ],
   };
@@ -274,6 +278,7 @@ function normalizeValue(value) {
 }
 
 function formatPreflight(result) {
+  const renderedLifecycleCard = renderStartupLifecycleCard(result.lifecycleCard);
   return JSON.stringify({
     status: result.status,
     command: result.command,
@@ -281,9 +286,32 @@ function formatPreflight(result) {
     issuePath: result.issuePath,
     runnerAssignment: result.runnerAssignment,
     lifecycleCard: result.lifecycleCard,
+    renderedLifecycleCard,
     summary: result.doctor.summary,
     nextAction: result.nextAction,
   }, null, 2);
+}
+
+function renderStartupLifecycleCard(lifecycleCard) {
+  const current = lifecycleCard?.fields?.current ?? {};
+  const input = lifecycleCard?.fields?.input_waiting ?? {};
+  return [
+    '╭─ 🚀 POKit2 세션 시작',
+    '│',
+    '│ 접속',
+    `│   모드    ${lifecycleCard?.mode ?? '상태 확인'}`,
+    '│',
+    '│ 현재 진행',
+    `│   프로젝트  ${current.project ?? 'unknown'}`,
+    `│   이슈      ${current.issue ?? 'none'}`,
+    `│   상태      ${current.state ?? 'unknown'}`,
+    `│   다음      ${current.next ?? '-'}`,
+    '│',
+    '├─ 입력 대기',
+    `│   ${input.message ?? '-'}`,
+    `│   ${input.guard ?? '-'}`,
+    '╰─',
+  ].join('\n');
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;

@@ -26,11 +26,32 @@ test('starter runner, doctor, metrics, issue list, and evidence list run', () =>
   }
 });
 
-test('starter first-use common flow creates and activates a COM issue', async () => {
+test('starter first-use flow creates and activates an isolated smoke issue', async () => {
   const isolatedRoot = await mkdtemp(path.join(tmpdir(), 'pokit-starter-smoke-'));
   await cp(process.cwd(), isolatedRoot, { recursive: true });
 
   try {
+  const suffix = process.pid.toString(36);
+  const projectKey = `smoke-${suffix}`;
+  const namespace = `SMK${suffix.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4)}`;
+  const createProject = spawnSync(process.execPath, [
+    'scripts/pokit-project-create.mjs',
+    '--key',
+    projectKey,
+    '--name',
+    'Smoke Project',
+    '--namespace',
+    namespace,
+  ], { cwd: isolatedRoot, encoding: 'utf8', env: process.env });
+  assert.equal(createProject.status, 0, `${createProject.stderr}\n${createProject.stdout}`);
+
+  const useProject = spawnSync(process.execPath, ['scripts/pokit-project-use.mjs', projectKey], {
+    cwd: isolatedRoot,
+    encoding: 'utf8',
+    env: process.env,
+  });
+  assert.equal(useProject.status, 0, `${useProject.stderr}\n${useProject.stdout}`);
+
   const create = spawnSync(process.execPath, [
     'scripts/pokit-issue-create.mjs',
     '--title',
@@ -40,8 +61,8 @@ test('starter first-use common flow creates and activates a COM issue', async ()
   ], { cwd: isolatedRoot, encoding: 'utf8', env: process.env });
   assert.equal(create.status, 0, `${create.stderr}\n${create.stdout}`);
   const created = JSON.parse(create.stdout);
-  assert.equal(created.issue, 'COM-001');
-  assert.equal(created.path, 'projects/common/issues/COM-001.md');
+  assert.equal(created.issue, `${namespace}-001`);
+  assert.equal(created.path, `projects/${projectKey}/issues/${namespace}-001.md`);
 
   const list = spawnSync(process.execPath, ['scripts/pokit-list-issues.mjs'], {
     cwd: isolatedRoot,
@@ -49,9 +70,9 @@ test('starter first-use common flow creates and activates a COM issue', async ()
     env: process.env,
   });
   assert.equal(list.status, 0, `${list.stderr}\n${list.stdout}`);
-  assert.match(list.stdout, /COM-001/);
+  assert.match(list.stdout, new RegExp(`${namespace}-001`));
 
-  const use = spawnSync(process.execPath, ['scripts/pokit-issue-use.mjs', 'COM-001'], {
+  const use = spawnSync(process.execPath, ['scripts/pokit-issue-use.mjs', `${namespace}-001`], {
     cwd: isolatedRoot,
     encoding: 'utf8',
     env: process.env,

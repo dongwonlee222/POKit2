@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import {
+  ensureWorkReadOrderEntry,
   findIssue,
   formatIssueId,
   getActiveProject,
@@ -11,6 +12,7 @@ import {
   issuePathForProject,
   parseArgs,
   readRegistry,
+  syncStarterStateViews,
   updateCurrent,
   writeRegistry,
 } from './pokit-project-contract.mjs';
@@ -70,7 +72,7 @@ const content = [
   `issue_type: ${issueType}`,
   'canonical_state: backlog',
   'gate_state: pending',
-  'status: candidate',
+  'status: pending',
   'definition_readiness: draft',
   'depends_on: []',
   'prevention-rule-ref:',
@@ -158,6 +160,11 @@ if (args.activate) {
     next_action: `${issueId} 실행 준비`,
     updated_at: createdAt,
   });
+  const found = await findIssue(root, issueId);
+  if (found) await ensureWorkReadOrderEntry(root, found.relativePath);
+  await syncStarterStateViews(root);
+} else {
+  await syncStarterStateViews(root);
 }
 
 console.log(JSON.stringify({

@@ -79,6 +79,25 @@ export async function updateCurrent(root, updates) {
   await writeFile(path.join(root, CURRENT_PATH), `---\n${frontmatterText}\n---${body}`, 'utf8');
 }
 
+export async function syncStarterStateViews(root) {
+  const [{ frontmatter }, registry, issues] = await Promise.all([
+    readCurrent(root),
+    readRegistry(root),
+    listIssueFiles(root),
+  ]);
+  const activeProject = registry.projects.find((project) => project.key === frontmatter.active_project) ?? null;
+  const activeIssue = frontmatter.active_issue ?? null;
+  const activeFound = activeIssue ? issues.find((issue) => issue.id === activeIssue) : null;
+  const gateState = frontmatter.gate_state ?? 'idle';
+  const nextAction = frontmatter.next_action ?? defaultNextAction(activeProject?.key ?? frontmatter.active_project ?? 'common');
+
+  await Promise.all([
+    writeStatusBoard(root, { activeProject, activeIssue, activeFound, gateState, nextAction }),
+    writeIssueIndex(root, issues),
+    writeStarterHandoff(root, { frontmatter, activeProject, activeIssue, gateState, nextAction }),
+  ]);
+}
+
 export async function ensureWorkReadOrderEntry(root, relativePath) {
   const currentFile = path.join(root, CURRENT_PATH);
   const text = await readFile(currentFile, 'utf8');
@@ -179,9 +198,16 @@ export async function listIssueFiles(root) {
     }
     for (const entry of entries) {
       if (entry.isFile() && ISSUE_ID_PATTERN.test(entry.name.replace(/\.md$/, ''))) {
+        const relativePath = `projects/${project.key}/issues/${entry.name}`;
+        const text = await readFile(path.join(root, relativePath), 'utf8');
+        const frontmatter = parseFrontmatter(text);
+        const issueId = entry.name.replace(/\.md$/, '');
         files.push({
+          id: issueId,
           project,
-          relativePath: `projects/${project.key}/issues/${entry.name}`,
+          title: frontmatter.title ?? issueId,
+          status: frontmatter.status ?? frontmatter.gate_state ?? 'unknown',
+          relativePath,
         });
       }
     }
@@ -195,4 +221,74 @@ export async function ensureProjectFolders(root, key) {
     mkdir(path.join(root, 'docs', key), { recursive: true }),
     mkdir(path.join(root, 'artifacts', key), { recursive: true }),
   ]);
+}
+
+function defaultNextAction(projectKey) {
+  return `Create the first ${projectKey} issue with node scripts/pokit-issue-create.mjs --title <title>`;
+}
+
+async function writeStatusBoard(root, { activeProject, activeIssue, activeFound, gateState, nextAction }) {
+  const projectLabel = activeProject
+    ? `${activeProject.key} (${activeProject.namespace})`
+    : 'unknown';
+  const issueLabel = activeIssue
+    ? `${activeIssue}${activeFound?.title ? ` — ${activeFound.title}` : ''}`
+    : 'none';
+  const lines = [
+    '# Status Board',
+    '',
+    'Current layer: L1 Starter Bootstrap',
+    `Current project: ${projectLabel}`,
+    `Current issue: ${issueLabel}`,
+    `Gate state: ${gateState}`,
+    `Next action: ${nextAction}`,
+    '',
+    '## PO Hierarchy',
+    '',
+    'Project -> Harness Issue -> Subtask result -> Gate evidence',
+    '',
+    'The `common` project is the beginner-safe default. Add your own project when you want a separate namespace and issue counter.',
+    '',
+  ];
+  await writeFile(path.join(root, '.ai-os/status-board.md'), lines.join('\n'), 'utf8');
+}
+
+async function writeIssueIndex(root, issues) {
+  const lines = [
+    '# Issue Index',
+    '',
+    '| Issue | Project | Title | Status | Path |',
+    '| --- | --- | --- | --- | --- |',
+  ];
+  for (const issue of issues) {
+    lines.push(`| ${issue.id} | ${issue.project.key} | ${issue.title} | ${issue.status} | \`${issue.relativePath}\` |`);
+  }
+  if (issues.length === 0) {
+    lines.push('', 'No work issue exists yet. The default `common` project will create `COM-001` first.');
+  }
+  lines.push('');
+  await writeFile(path.join(root, '.ai-os/issue-index.md'), lines.join('\n'), 'utf8');
+}
+
+async function writeStarterHandoff(root, { frontmatter, activeProject, activeIssue, gateState, nextAction }) {
+  const projectLabel = activeProject?.key ?? frontmatter.active_project ?? 'unknown';
+  const lines = [
+    '# Handoff',
+    '',
+    '## Active Snapshot',
+    '',
+    `- active_project: ${projectLabel}`,
+    `- active_issue: ${activeIssue ?? 'none'}`,
+    `- gate_state: ${gateState}`,
+    `- active_sprint: ${frontmatter.active_sprint ?? 'v0.1.0-starter'}`,
+    '',
+    `Next action: ${nextAction}`,
+    '',
+    '## Session Notes',
+    '',
+    '- Starter state views are generated from `.ai-os/current.md` and `.ai-os/projects.yaml`.',
+    '',
+  ];
+  await mkdir(path.join(root, '.ai-os/memory/session'), { recursive: true });
+  await writeFile(path.join(root, '.ai-os/memory/session/handoff.md'), lines.join('\n'), 'utf8');
 }

@@ -4,6 +4,7 @@ import {
   findIssue,
   parseArgs,
   parseFrontmatter,
+  syncStarterStateViews,
   updateCurrent,
 } from './pokit-project-contract.mjs';
 import { readFile } from 'node:fs/promises';
@@ -31,6 +32,7 @@ try {
     updated_at: new Date().toISOString().slice(0, 10),
   });
   await ensureWorkReadOrderEntry(root, found.relativePath);
+  await syncStarterStateViews(root);
   console.log(JSON.stringify({ status: 'pass', active_issue: issueId, path: found.relativePath }, null, 2));
 } catch (error) {
   console.error(error.message);

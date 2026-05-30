@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { parseArgs, readRegistry, updateCurrent } from './pokit-project-contract.mjs';
+import { parseArgs, readRegistry, syncStarterStateViews, updateCurrent } from './pokit-project-contract.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const key = args._?.[0] ?? args.key;
@@ -18,9 +18,10 @@ try {
     active_project: key,
     active_issue: null,
     gate_state: 'idle',
-    next_action: `Create the first ${key} issue with node scripts/pokit-issue-create.mjs --title "..."`,
+    next_action: `Create the first ${key} issue with node scripts/pokit-issue-create.mjs --title <title>`,
     updated_at: new Date().toISOString().slice(0, 10),
   });
+  await syncStarterStateViews(root);
   console.log(JSON.stringify({ status: 'pass', active_project: key, namespace: project.namespace }, null, 2));
 } catch (error) {
   console.error(error.message);

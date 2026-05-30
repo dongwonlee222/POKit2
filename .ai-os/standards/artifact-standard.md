@@ -11,5 +11,6 @@
 - small scoped changes: keep changes bounded to the active issue.
 - tests before gate claim: add or update verification before claiming behavior, contract, or release state.
 - no unrelated refactor: avoid cleanup, formatting churn, or structure moves that are not needed for the active issue.
-- public-safe starter content: starter artifacts must avoid secrets, personal paths, private company assumptions, production history, run logs, and event receipts.
+- public-safe starter content: distributed starter artifacts must avoid secrets, personal paths, private company assumptions, production history, run logs, and preexisting event receipts.
+- runtime receipts: user-run starter commands may create new local event receipts after install; those receipts are user project state, not shipped starter content.
 - review evidence before completion: use fresh local verification before completion; subagent output is not completion proof.

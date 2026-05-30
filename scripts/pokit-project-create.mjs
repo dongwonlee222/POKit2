@@ -3,6 +3,7 @@ import {
   ensureProjectFolders,
   parseArgs,
   readRegistry,
+  syncStarterStateViews,
   validateNamespace,
   validateProjectKey,
   writeRegistry,
@@ -28,6 +29,7 @@ try {
   registry.projects.push({ key, name, namespace, next_number: 1 });
   await ensureProjectFolders(root, key);
   await writeRegistry(root, registry);
+  await syncStarterStateViews(root);
   console.log(JSON.stringify({ status: 'pass', project: key, namespace }, null, 2));
 } catch (error) {
   console.error(error.message);

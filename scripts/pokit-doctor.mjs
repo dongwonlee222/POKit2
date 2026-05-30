@@ -52,6 +52,7 @@ export async function runDoctor({ root = process.cwd() } = {}) {
   await checkProjectRegistry(context, items);
   await checkSessionFiles(context, items);
   if (context.currentText) await checkReadOrder(context, items);
+  await checkStateViewSync(context, items);
   if (context.activeIssue) await checkActiveIssue(context, items);
   await checkVersionCompatibility(context, items);
 
@@ -204,6 +205,58 @@ async function checkActiveIssue(context, items) {
       fail(items, 'active_issue_section', filePath, `Missing section: ${section}.`, `Add ## ${section} to ${filePath}.`);
     }
   }
+}
+
+async function checkStateViewSync(context, items) {
+  if (!context.currentFrontmatter) return;
+
+  const statusBoardPath = '.ai-os/status-board.md';
+  const issueIndexPath = '.ai-os/issue-index.md';
+  const statusBoard = await readOptional(context.root, statusBoardPath);
+  const issueIndex = await readOptional(context.root, issueIndexPath);
+  const registry = await readRegistry(context.root).catch(() => ({ projects: [] }));
+  const activeProjectKey = context.currentFrontmatter.active_project ?? null;
+  const activeProject = registry.projects.find((project) => project.key === activeProjectKey) ?? null;
+  const activeIssue = context.currentFrontmatter.active_issue ?? null;
+  const gateState = context.currentFrontmatter.gate_state ?? null;
+
+  if (statusBoard !== null && activeProject) {
+    const expectedProject = `Current project: ${activeProject.key} (${activeProject.namespace})`;
+    if (statusBoard.includes(expectedProject)) {
+      pass(items, 'state_sync_status_board', statusBoardPath, 'status-board project matches current.md.');
+    } else {
+      fail(items, 'state_sync_status_board', statusBoardPath, `status-board project does not match active_project ${activeProject.key}.`, 'Run a starter command that syncs state views or repair status-board.md.');
+    }
+
+    const expectedIssuePattern = activeIssue
+      ? new RegExp(`^Current issue:\\s*${escapeRegExp(activeIssue)}(?:\\s|$)`, 'm')
+      : /^Current issue:\s*none\s*$/m;
+    if (expectedIssuePattern.test(statusBoard)) {
+      pass(items, 'state_sync_status_board', statusBoardPath, 'status-board issue matches current.md.');
+    } else {
+      fail(items, 'state_sync_status_board', statusBoardPath, `status-board issue does not match active_issue ${activeIssue ?? 'none'}.`, 'Run a starter command that syncs state views or repair status-board.md.');
+    }
+
+    if (!gateState || statusBoard.includes(`Gate state: ${gateState}`)) {
+      pass(items, 'state_sync_status_board', statusBoardPath, 'status-board gate state matches current.md.');
+    } else {
+      fail(items, 'state_sync_status_board', statusBoardPath, `status-board gate state does not match ${gateState}.`, 'Run a starter command that syncs state views or repair status-board.md.');
+    }
+  }
+
+  if (issueIndex !== null && activeIssue) {
+    const found = await findIssue(context.root, activeIssue);
+    const expectedPath = found?.relativePath ?? null;
+    if (expectedPath && issueIndex.includes(`| ${activeIssue} |`) && issueIndex.includes(`\`${expectedPath}\``)) {
+      pass(items, 'issue_index_sync', issueIndexPath, 'issue-index lists the active issue.');
+    } else {
+      fail(items, 'issue_index_sync', issueIndexPath, `issue-index does not list active_issue ${activeIssue}.`, 'Run a starter command that syncs state views or repair issue-index.md.');
+    }
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function checkVersionCompatibility(context, items) {

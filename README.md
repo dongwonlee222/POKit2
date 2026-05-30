@@ -27,7 +27,7 @@ Use this for a fresh project.
 mkdir my-project
 cd my-project
 
-VERSION=v0.12.0-rc.3
+VERSION=v0.12.0-rc.4
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 
@@ -263,7 +263,7 @@ The starter intentionally does not ship POKit2's full development `scripts/lib` 
 | `node scripts/pokit-doctor.mjs` | Check state, structure, gate, and starter contract drift. |
 | `node scripts/pokit-project-create.mjs --key my-project --name "My Project" --namespace MYP` | Create a project with its own namespace, folders, and counter. |
 | `node scripts/pokit-project-use.mjs my-project` | Switch the active project. |
-| `node scripts/pokit-issue-create.mjs --title "..."` | Create the next issue in the active project and receipt. |
+| `node scripts/pokit-issue-create.mjs --title "..."` | Create the next issue in the active project and write a local runtime receipt. |
 | `node scripts/pokit-issue-use.mjs COM-001` | Make an issue active so runner and doctor use it. |
 | `node scripts/pokit-list-issues.mjs` | List local Harness Issues. |
 | `node scripts/pokit-list-evidence.mjs` | Inspect local event/receipt evidence. |
@@ -407,11 +407,13 @@ Excluded:
 - real specs and sprint/release work memory
 - current development handoff state
 - run metrics
-- event receipts
+- preexisting event receipts from the development repository
 - private repo links
 - personal paths
 - secrets
 - `.codex`, local `.claude` settings, `.modu-harness`
+
+After install, your own commands may create local runtime receipts under `.ai-os/events/`; those belong to your project and are not shipped from this development repository.
 - release/dist outputs
 - full POKit2 development `scripts/lib`
 - full internal regression `tests`
