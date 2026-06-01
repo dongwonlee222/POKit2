@@ -2,6 +2,19 @@
 
 This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
 
+## [0.12.0] - 2026-05-31
+
+### Changed
+
+- Promoted the public starter from `v0.12.0-rc.6` to stable `v0.12.0` after fresh external QA.
+- Starter install instructions now point to the stable release archive.
+- Public starter wording and executable guards are aligned for clarify markers, issue transition blocking, beginner issue creation/list/use flow, and worker/fallback evidence.
+
+### Verification
+
+- Stable release keeps package-registry and hosted-service publishing out of scope.
+- Public starter release is based on the sanitized starter manifest, not the private development issue history.
+
 ## [0.12.0-rc.2] - 2026-05-30
 
 ### Changed

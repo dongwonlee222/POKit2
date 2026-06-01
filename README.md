@@ -15,19 +15,43 @@ request
   -> next issue
 ```
 
-POKit2 is not a hosted dashboard and it is not a package-registry install. The public repository is a sanitized starter kit: it contains the method, harness, seed state, scripts, and setup surfaces needed to start a new project. It does not contain the development repository's real issues, specs, sprint memory, run logs, receipts, private links, or personal paths.
+POKit2 is not a hosted dashboard and it is not a package-registry install. It is shipped as an installable starter archive: unpack it into a fresh project, run the local starter scripts, and keep the resulting state inside that project. The public repository is a sanitized starter kit: it contains the method, harness, seed state, scripts, and setup surfaces needed to start a new project. It does not contain the development repository's real issues, specs, sprint memory, run logs, receipts, private links, or personal paths.
 
 ## Quick Install
 
-### Option A. GitHub Release Archive
+### Option A. Local v0.13 Starter Archive
 
-Use this for a fresh project.
+Use this when you have this repository locally and want to install the current v0.13 starter into a fresh project.
+
+```bash
+mkdir my-project
+tar -xzf /path/to/pokit2/release/pokit-starter-v0.13.0.tar.gz -C my-project
+
+cd my-project
+node scripts/pokit-runner.mjs "포킷 시작"
+node scripts/pokit-doctor.mjs
+node --test tests/starter-smoke.test.mjs
+```
+
+Expected result:
+
+```text
+runner: pass
+doctor: pass
+starter smoke: pass
+active project: common
+active issue: none yet
+```
+
+### Option B. GitHub Release Archive
+
+Use this after a v0.13 GitHub release has been explicitly published.
 
 ```bash
 mkdir my-project
 cd my-project
 
-VERSION=v0.12.0-rc.6
+VERSION=v0.13.0
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 
@@ -36,18 +60,11 @@ node scripts/pokit-runner.mjs "포킷 시작"
 node scripts/pokit-doctor.mjs
 ```
 
-Expected result:
+As of the local v0.13 release-gate evidence, the archive exists at `release/pokit-starter-v0.13.0.tar.gz`, but GitHub release/tag/public push still require separate PO approval.
 
-```text
-runner: pass
-doctor: pass
-active project: common
-active issue: none yet
-```
+### Option C. Clone The Public Starter
 
-### Option B. Clone The Public Starter
-
-Use this if you want the public starter files as a Git repository.
+Use this after the public repository has been updated to the desired release.
 
 ```bash
 git clone https://github.com/dongwonlee222/POKit2.git my-project
@@ -56,7 +73,7 @@ node scripts/pokit-runner.mjs "포킷 시작"
 node scripts/pokit-doctor.mjs
 ```
 
-### Option C. Manual Copy
+### Option D. Manual Copy
 
 Use manual copy only when you understand the starter boundary.
 
@@ -68,6 +85,17 @@ node scripts/pokit-doctor.mjs
 ```
 
 Do not copy a development repository's live `.ai-os` directory into a new project. That would copy someone else's issues, memory, run logs, and gate history.
+
+### Optional Local CLI Link
+
+If you are working from a source checkout and want the `pokit` command locally, link the package from the repository root:
+
+```bash
+npm link
+pokit doctor
+```
+
+This is local-only convenience. It is not an npm package-registry publish.
 
 ## Runtime Setup
 
@@ -123,6 +151,11 @@ The runner restores:
 
 POKit2 is an issue-driven local AI harness: durable work starts from a Harness Issue, moves through verification, and only then reaches a gate decision.
 
+New to POKit? Start with the beginner onboarding docs:
+
+- [POKit 개념 한눈에 보기](docs/onboarding/pokit-concepts-for-users.md)
+- [POKit 흐름 한 장](docs/onboarding/pokit-flow-overview.md)
+
 The starter begins with the default `common` project and `COM` namespace. Create your first issue without choosing an ID:
 
 ```bash
@@ -143,6 +176,31 @@ node scripts/pokit-doctor.mjs
 ```
 
 Manual `--id` remains available as an explicit override, but the beginner flow should let the active project choose the next issue number.
+
+From there, the normal work loop is:
+
+```text
+포킷 시작
+  -> create or select an issue
+  -> ask the agent to refine or execute
+  -> verify with doctor/tests/smoke
+  -> pass the gate only after evidence exists
+  -> move to the next issue
+```
+
+The source repository also has a richer local `pokit` package surface for development and smoke testing. The public starter archive intentionally ships standalone starter scripts first; package-registry publishing remains out of scope until separately approved.
+
+## v0.13 Concept Quick Map
+
+| Concept | What it means for a user |
+|---|---|
+| Project | A named work area with its own issue counter and folders. The starter begins with `common / COM`. |
+| Issue | The unit of durable work: goal, scope, acceptance criteria, verification, and gate evidence. |
+| Session | One agent run or work attempt against an issue. Multiple sessions can exist conceptually, but integration remains explicit. |
+| Worktree | An isolated Git checkout for parallel or non-main work. The public starter explains the model; advanced worktree orchestration is a source-repo/development surface. |
+| Integration | The main session reviews and accepts/rejects work before state or gate claims move forward. |
+| Overview | A read-only project/status view. In the starter, use `current.md`, `status-board.md`, and `pokit-list-issues`; source-repo overview tooling is not claimed as a packaged public command until it is shipped. |
+| Push confirmation | POKit does not automatically publish or push. External writes, tags, GitHub releases, and package publishing need explicit PO approval. |
 
 ## POKit Principles
 
@@ -225,7 +283,7 @@ project/
 |   |-- pokit-issue-create.mjs
 |   |-- pokit-issue-use.mjs
 |   |-- pokit-list-issues.mjs
-|   |-- pokit-list-evidence.mjs
+|   |-- pokit-list-evidence-raw.mjs
 |   |-- pokit-measure-startup.mjs
 |   `-- pokit-sprint-close.mjs
 |
@@ -266,7 +324,7 @@ The starter intentionally does not ship POKit2's full development `scripts/lib` 
 | `node scripts/pokit-issue-create.mjs --title "..."` | Create the next issue in the active project and write a local runtime receipt. |
 | `node scripts/pokit-issue-use.mjs COM-001` | Make an issue active so runner and doctor use it. |
 | `node scripts/pokit-list-issues.mjs` | List local Harness Issues. |
-| `node scripts/pokit-list-evidence.mjs` | Inspect local event/receipt evidence. |
+| `node scripts/pokit-list-evidence-raw.mjs` | Inspect local event/receipt evidence (raw dump). |
 | `node scripts/pokit-measure-startup.mjs` | Estimate startup/work-read token budget. |
 | `node scripts/pokit-sprint-close.mjs v0.1.0` | Archive handoff and create a retro template. |
 | `node --test tests/*.mjs` | Run the starter smoke test, not the private development regression suite. |

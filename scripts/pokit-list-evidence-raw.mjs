@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// raw event-log dump (starter read-only variant; distinct from dev scripts/pokit-list-evidence.mjs which builds a derived evidence index)
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 

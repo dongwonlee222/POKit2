@@ -11,7 +11,7 @@ test('starter runner, doctor, metrics, issue list, and evidence list run', () =>
     ['scripts/pokit-doctor.mjs'],
     ['scripts/pokit-measure-startup.mjs'],
     ['scripts/pokit-list-issues.mjs'],
-    ['scripts/pokit-list-evidence.mjs'],
+    ['scripts/pokit-list-evidence-raw.mjs'],
   ]) {
     const result = spawnSync(process.execPath, args, {
       cwd: process.cwd(),
