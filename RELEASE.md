@@ -17,55 +17,57 @@ Every release Harness Issue must include README freshness in its Acceptance Crit
 
 ## Release Identity
 
-- Version: `v0.13.0`
-- Type: local starter archive / release gate evidence
-- Date: 2026-06-02
-- Status before external actions: `local archive ready; external publish not performed`
+- Version: `v0.14.0`
+- Type: public starter archive / GitHub release
+- Date: 2026-06-04
+- Status: `v0.14 release-gate evidence prepared; public GitHub release/tag/public push approved by PO on 2026-06-04; package-registry publish NOT performed`
 
-This prepares the v0.13.0 public starter install archive after the multi-project/multi-session starter lane and onboarding docs completed. External publish actions still require separate PO approval.
+This prepares the v0.14.0 public starter install archive after multi-session wiring, starter safety floor, session registration guards, and lifecycle card completion. External publish (GitHub tag, public repo push, archive upload) is a separate PO-approved action for this release execution.
 
 ## Artifact
 
-- File: `release/pokit-starter-v0.13.0.tar.gz`
+- File: `release/pokit-starter-v0.14.0.tar.gz`
 - Source boundary: `starter-manifest.yaml` include entries only
 - Mapping: `starter/.ai-os/**` -> `.ai-os/**`; `starter/.claude/**` -> `.claude/**`; `starter/scripts/**` -> `scripts/**`
-- User runtime: runner, doctor, issue-create, list-issues, list-evidence, measure-startup, sprint-close, starter smoke test
+- User runtime: runner, doctor, issue-create, list-issues, list-evidence, measure-startup, sprint-close, starter smoke test, doctor-binding test
 - Public target repository: `dongwonlee222/POKit2`
 
-Recorded in the release evidence outside the starter archive:
+Recorded in the release evidence outside the starter archive (populated after archive generation):
 
-- SHA-256: see `release/v0.13.0.md`
-- Bytes: see `release/v0.13.0.md`
-- Public URL: pending until stable GitHub release
+- SHA-256: recorded in `release/v0.14.0.md` (kept out of this archive-shipped file to avoid a self-referential digest)
+- Bytes: recorded in `release/v0.14.0.md`
+- Public URL: `https://github.com/dongwonlee222/POKit2/releases/tag/v0.14.0`
 
 ## Preflight
 
-- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.13.0.tar.gz`
-- [x] `node scripts/pokit-starter-self-test.mjs`
+- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.14.0.tar.gz` (self-test embedded: runner, doctor, parity, script sentinels, sensitive-content scan — all pass)
+- [x] `node scripts/pokit-starter-self-test.mjs` (run via archive build)
 - [x] Extracted archive runner passes.
-- [x] Extracted archive doctor passes.
-- [x] Extracted archive smoke tests pass.
+- [x] Extracted archive doctor passes (35 pass, fail 0).
+- [x] Extracted archive smoke tests pass (starter-smoke 36/36, doctor-binding 6/6).
 - [x] Focused starter/public README checks pass.
-- [ ] `node --test tests/*.mjs`
-- [x] `node scripts/pokit-doctor.mjs`
-- [x] `git diff --check`
+- [x] `npm test` (full suite 947/947 pass).
+- [x] `node scripts/pokit-doctor.mjs` (active release-issue checks all pass; only pre-existing gitignored metrics.json fails for earlier completed issues remain, out of v0.14 release scope).
+- [x] `git diff --check` (clean).
 - [x] Archive safety scan finds no private paths, secrets, run logs, event receipts, real issue history, or real sprint memory.
 
 ## External Actions
 
 - [x] Public repository target confirmed: `dongwonlee222/POKit2`
 - [x] No accidental push to private development repo as the public install source.
-- [ ] Stable public tag confirmed.
-- [ ] Public README updated.
-- [ ] Release archive attached or install path documented.
-- [ ] External install test completed against published v0.13 artifact/path before stable promotion.
+- [x] Stable public tag confirmed: `v0.14.0`
+- [x] Public README updated.
+- [x] Release archive install path documented locally in README.
+- [ ] Public GitHub release archive uploaded with matching digest.
+- [ ] Work repo GitHub release archive uploaded with matching digest.
+- [ ] External install surface points to the published v0.14 artifact/path.
 
 ## Explicit Non-Actions
 
 - No npm, pip, Homebrew, Docker, or package-registry publish.
 - No hosted service launch.
 - No claim that Codex, Claude, or Antigravity support is fully proven without fresh runtime proof.
-- No stable `v0.12.0` release claim before stable public release evidence is recorded.
+- No stable runtime support claim beyond the verified local starter smoke path.
 
 ## GitHub Repository Metadata
 

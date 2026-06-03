@@ -156,7 +156,7 @@ Excluded:
 - live handoff/current state
 - run metrics and event receipts
 - private development repo links
-- local `.codex`, `.claude/settings.local.json`, and `.modu-harness`
+- local agent settings and development-only harness folders
 
 ## Release Boundary
 

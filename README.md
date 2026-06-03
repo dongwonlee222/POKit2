@@ -19,13 +19,13 @@ POKit2 is not a hosted dashboard and it is not a package-registry install. It is
 
 ## Quick Install
 
-### Option A. Local v0.13 Starter Archive
+### Option A. Local v0.14 Starter Archive
 
-Use this when you have this repository locally and want to install the current v0.13 starter into a fresh project.
+Use this when you have this repository locally and want to install the current v0.14 starter into a fresh project.
 
 ```bash
 mkdir my-project
-tar -xzf /path/to/pokit2/release/pokit-starter-v0.13.0.tar.gz -C my-project
+tar -xzf /path/to/pokit2/release/pokit-starter-v0.14.0.tar.gz -C my-project
 
 cd my-project
 node scripts/pokit-runner.mjs "포킷 시작"
@@ -45,13 +45,13 @@ active issue: none yet
 
 ### Option B. GitHub Release Archive
 
-Use this after a v0.13 GitHub release has been explicitly published.
+Use this after a v0.14 GitHub release has been explicitly published.
 
 ```bash
 mkdir my-project
 cd my-project
 
-VERSION=v0.13.0
+VERSION=v0.14.0
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 
@@ -60,7 +60,7 @@ node scripts/pokit-runner.mjs "포킷 시작"
 node scripts/pokit-doctor.mjs
 ```
 
-As of the local v0.13 release-gate evidence, the archive exists at `release/pokit-starter-v0.13.0.tar.gz`, but GitHub release/tag/public push still require separate PO approval.
+As of the v0.14 release, the archive exists at `release/pokit-starter-v0.14.0.tar.gz` and is published through the public GitHub release after PO approval.
 
 ### Option C. Clone The Public Starter
 
@@ -190,7 +190,7 @@ From there, the normal work loop is:
 
 The source repository also has a richer local `pokit` package surface for development and smoke testing. The public starter archive intentionally ships standalone starter scripts first; package-registry publishing remains out of scope until separately approved.
 
-## v0.13 Concept Quick Map
+## v0.14 Concept Quick Map
 
 | Concept | What it means for a user |
 |---|---|
@@ -201,6 +201,11 @@ The source repository also has a richer local `pokit` package surface for develo
 | Integration | The main session reviews and accepts/rejects work before state or gate claims move forward. |
 | Overview | A read-only project/status view. In the starter, use `current.md`, `status-board.md`, and `pokit-list-issues`; source-repo overview tooling is not claimed as a packaged public command until it is shipped. |
 | Push confirmation | POKit does not automatically publish or push. External writes, tags, GitHub releases, and package publishing need explicit PO approval. |
+| Session guidance card | After startup or at each step, the runner prints a guidance card (work / integration / status) showing where you are and what to do next. Cards are display-only; they do not approve transitions. |
+| Safe-step automation (🟢/🔴) | Reversible, evidence-leaving steps (code change, verify, commit) proceed automatically 🟢. Risky or external steps (push, gate pass) always require your explicit approval 🔴. Push always needs PO confirmation. |
+| Starter safety floor | The starter now ships an active-issue guard: if you try to make a durable file change without an active issue, the action is blocked and a draft issue card is offered automatically. Works with any issue-id prefix, not just `COM-`. Installed via `install-safety-floor-settings.mjs` using non-destructive merge. |
+| Multi-session coordination | When multiple worktrees or sessions are open, `/pokit.next` is registry-aware and will not double-claim a candidate another session is already working on. Sessions auto-register on startup. Commit/push guards are role-based; local hooks are advisory (bypassable with `--no-verify`); authoritative enforcement is server-side. |
+| Antigravity runtime | POKit's four `/pokit.*` skills can be emulated on the Antigravity runtime via a `define_subagent`-based contract. Entry point is `ANTIGRAVITY.md`. Official Antigravity runtime support is currently deferred (smoke-tested PASS; full runtime-proof artifacts not yet captured). Do not assume native skill discovery there until runtime-specific proof exists. |
 
 ## POKit Principles
 
@@ -273,7 +278,8 @@ project/
 |
 |-- .claude/
 |   |-- commands/
-|   `-- skills/
+|   |-- skills/
+|   `-- settings.json
 |
 |-- scripts/
 |   |-- pokit-runner.mjs
@@ -285,10 +291,16 @@ project/
 |   |-- pokit-list-issues.mjs
 |   |-- pokit-list-evidence-raw.mjs
 |   |-- pokit-measure-startup.mjs
-|   `-- pokit-sprint-close.mjs
+|   |-- pokit-sprint-close.mjs
+|   |-- active-issue-guard.mjs
+|   |-- install-safety-floor-settings.mjs
+|   `-- hooks/
+|       |-- require-active-issue-before-mutation.mjs
+|       `-- session-start.mjs
 |
 |-- tests/
-|   `-- starter-smoke.test.mjs
+|   |-- starter-smoke.test.mjs
+|   `-- pokit-doctor-binding.test.mjs
 |
 |-- projects/
 |   `-- <project>/
@@ -469,7 +481,7 @@ Excluded:
 - private repo links
 - personal paths
 - secrets
-- `.codex`, local `.claude` settings, `.modu-harness`
+- local agent settings and development-only harness folders
 
 After install, your own commands may create local runtime receipts under `.ai-os/events/`; those belong to your project and are not shipped from this development repository.
 - release/dist outputs

@@ -2,7 +2,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findIssue, readRegistry } from './pokit-project-contract.mjs';
+import { ISSUE_ID_PATTERN, findIssue, listIssueFiles, readRegistry } from './pokit-project-contract.mjs';
 
 const START_READ_ORDER = [
   'AGENTS.md',
@@ -32,6 +32,8 @@ const ISSUE_FRONTMATTER_KEYS = [
   'schema_version',
 ];
 
+const AUTHORING_RECEIPT_CUTOFF = '2026-05-30';
+
 const SPEC_CODE_SECTIONS = [
   'Brief',
   'Evidence',
@@ -54,6 +56,8 @@ export async function runDoctor({ root = process.cwd() } = {}) {
   if (context.currentText) await checkReadOrder(context, items);
   await checkStateViewSync(context, items);
   if (context.activeIssue) await checkActiveIssue(context, items);
+  await checkDurableBinding(context, items);
+  await checkStarterAuthoringEvidence(context, items);
   await checkVersionCompatibility(context, items);
 
   const summary = summarize(items);
@@ -261,6 +265,132 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// listIssueFiles throws when the project registry is missing/unreadable
+// (already surfaced by checkProjectRegistry). The detection checks must not
+// crash runDoctor on that; fall back to an empty list.
+async function safeListIssueFiles(root) {
+  try {
+    return await listIssueFiles(root);
+  } catch {
+    return [];
+  }
+}
+
+async function checkDurableBinding(context, items) {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+
+  let porcelain = '';
+  let headSubject = '';
+  try {
+    const [statusResult, logResult] = await Promise.all([
+      execFileAsync('git', ['status', '--porcelain', '--', '.'], { cwd: context.root }),
+      execFileAsync('git', ['log', '-1', '--pretty=%s', '--', '.'], { cwd: context.root }),
+    ]);
+    porcelain = statusResult.stdout;
+    headSubject = logResult.stdout.trim();
+  } catch {
+    pass(items, 'durable_binding', '.ai-os/current.md', 'git 미가용 — durable 흔적 검사 skip (graceful).');
+    return;
+  }
+
+  const durableDirty = porcelain
+    .split('\n')
+    .filter((line) => line.length > 0 && !line.startsWith('??'))
+    .length > 0;
+
+  const activeIssue = context.activeIssue || null;
+
+  const tokenRe = new RegExp(ISSUE_ID_PATTERN.source.replace(/^\^/, '').replace(/\$$/, ''), 'g');
+
+  // Registry may be missing/unreadable (already flagged by checkProjectRegistry).
+  // Fall back to no issues → CASE 2 gating off, no crash.
+  const issues = await safeListIssueFiles(context.root);
+
+  let failed = false;
+
+  // CASE 1: dirty tree with no active issue
+  if (durableDirty && !activeIssue) {
+    fail(
+      items,
+      'durable_binding',
+      '.ai-os/current.md',
+      '작업트리에 durable 변경이 있는데 active_issue=null — 이슈를 먼저 묶으세요.',
+      'node scripts/pokit-issue-create.mjs 후 node scripts/pokit-issue-use.mjs <이슈ID>',
+    );
+    failed = true;
+  }
+
+  // CASE 2: HEAD commit has no issue token (only when issues exist)
+  if (issues.length > 0 && headSubject && !headSubject.match(tokenRe)) {
+    fail(
+      items,
+      'durable_binding',
+      '.ai-os/current.md',
+      `HEAD 커밋이 어떤 이슈에도 안 묶임(토큰 없음): "${headSubject}". 커밋 제목에 이슈 ID를 넣으세요.`,
+      '커밋 제목에 이슈 ID(예: feat(COM-001): ...) 포함',
+    );
+    failed = true;
+  }
+
+  if (!failed) {
+    pass(items, 'durable_binding', '.ai-os/current.md', 'durable 흔적이 active 이슈에 바인딩됨(또는 클린 트리).');
+  }
+}
+
+async function checkStarterAuthoringEvidence(context, items) {
+  const issues = await safeListIssueFiles(context.root);
+
+  const eventLogText = await readOptional(context.root, '.ai-os/events/event-log.jsonl');
+  const authoredSet = new Set();
+  if (eventLogText !== null) {
+    for (const line of eventLogText.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line);
+        if (event.event_type === 'issue_authored' && event.issue_id) {
+          authoredSet.add(event.issue_id);
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+  }
+
+  for (const issue of issues) {
+    const issueText = await readFile(path.join(context.root, issue.relativePath), 'utf8');
+    const frontmatter = parseFrontmatter(issueText);
+    const { created_at } = frontmatter;
+    const createdDate =
+      typeof created_at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(created_at)
+        ? created_at.slice(0, 10)
+        : null;
+
+    if (!createdDate || createdDate < AUTHORING_RECEIPT_CUTOFF) {
+      pass(
+        items,
+        'issue_authoring_evidence',
+        issue.relativePath,
+        `${issue.id} grandfathered (created_at ${created_at ?? 'missing'} < cutoff ${AUTHORING_RECEIPT_CUTOFF}).`,
+      );
+      continue;
+    }
+
+    if (authoredSet.has(issue.id)) {
+      pass(items, 'issue_authoring_evidence', issue.relativePath, `${issue.id} has issue_authored receipt.`);
+    } else {
+      fail(
+        items,
+        'issue_authoring_evidence',
+        issue.relativePath,
+        `${issue.id} created_at>=${AUTHORING_RECEIPT_CUTOFF} 인데 매칭 issue_authored 영수증 없음.`,
+        'node scripts/pokit-issue-create.mjs로 생성됐는지 확인',
+      );
+    }
+  }
+}
+
 async function checkVersionCompatibility(context, items) {
   const filePath = 'pokit.config.yaml';
   const configText = await readOptional(context.root, filePath);
@@ -395,8 +525,9 @@ function escapeRegex(value) {
 }
 
 function formatResult(result) {
+  const statusEmoji = result.status === 'fail' ? '🔴' : result.status === 'pass' ? '✅' : '';
   const lines = [
-    `status: ${result.status}`,
+    `status: ${result.status} ${statusEmoji}`.trimEnd(),
     `pass: ${result.summary.pass}`,
     `fail: ${result.summary.fail}`,
     `warning: ${result.summary.warning}`,
@@ -404,7 +535,8 @@ function formatResult(result) {
   ];
 
   for (const item of result.items) {
-    lines.push(`[${item.status}] ${item.check} ${item.path} - ${item.message}`);
+    const itemEmoji = item.status === 'fail' ? '🔴' : item.status === 'pass' ? '✅' : '⚠️';
+    lines.push(`${itemEmoji} [${item.status}] ${item.check} ${item.path} - ${item.message}`);
     if (item.next_action) lines.push(`  next_action: ${item.next_action}`);
   }
 

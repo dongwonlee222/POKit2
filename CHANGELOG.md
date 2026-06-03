@@ -2,6 +2,28 @@
 
 This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
 
+## [0.14.0] - 2026-06-04
+
+### Added
+
+- Multi-session wiring with guided session cards and lifecycle card output from the runner.
+- Safe-step automation with pass/fail status indicators per step (reversible steps auto-proceed; push and gate pass require confirmation).
+- Starter safety floor: active-issue guard, PreToolUse `require-active-issue-before-mutation` hook, settings bundle, and doctor binding test.
+- Multi-session candidate-claim coordination with registry-aware `/pokit.next`.
+- Session auto-registration and role-based commit/push guards.
+- Sub-session handoff packets for clean context transfer across session boundaries.
+- Antigravity skill emulation contract — compatibility scaffolded; official Antigravity runtime support deferred, not claimed.
+
+### Changed
+
+- Full-test suite now uses a temp-isolated `POKIT_HOME` to prevent cross-test state bleed.
+- Manifest reconciled: `session-start.mjs` (prevention lever) and `pokit-doctor-binding.test.mjs` (detection lever) added to `include` and `update_refresh_include`.
+
+### Not Included
+
+- Unattended automation (`run-automation`) build is deferred to v0.15; this release ships design and runbook only.
+- Package-registry publish and hosted-service launch are not included in this starter release.
+
 ## [0.12.0] - 2026-05-31
 
 ### Changed

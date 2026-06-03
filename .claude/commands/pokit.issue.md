@@ -11,6 +11,7 @@ Recommended flow:
 3. Run `node scripts/pokit-runner.mjs "진행해줘"` for the execution preview.
 4. Implement the approved issue.
 5. Run `node scripts/pokit-doctor.mjs` and focused verification before claiming completion.
+6. Print the runner-rendered ✅ Complete lifecycle card as the final PO-facing answer: `node scripts/pokit-runner.mjs complete POK-XXX` and output its `renderedCompleteLifecycleCard` exactly. The card distinguishes `verification_ready` from `gate_passed` and never claims `gate_passed` by itself.
 
 Issue execution owns implementation and gate evidence. It does not create or groom new issue definitions.
 
