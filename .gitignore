@@ -7,4 +7,12 @@ release/*/
 .claude/worktrees/
 .claude/settings.local.json
 .modu-harness/
-.pokit/
+.pokit/.env
+.pokit/.env.*
+!.pokit/.env.example
+.pokit/sessions/
+.pokit/locks/
+.pokit/project-state.json
+.pokit/seq.json
+.pokit/current.md
+.pokit/handoff.md

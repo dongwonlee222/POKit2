@@ -2,6 +2,24 @@
 
 This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
 
+## [0.15.0] - 2026-06-04
+
+### Added
+
+- Targeted issue preflight before worker fan-out, so malformed execution packets fail early.
+- Local automation MVP: register, preview, first dry-run receipt, event-log entry, and disable stop switch.
+- Config and state role boundaries for project config, local secrets, user defaults, project state, and issue numbering.
+
+### Changed
+
+- Release-gate checks now run earlier: public-safe scan, archive self-test, extracted starter verification, evidence tracking, and release-boundary recording.
+- Starter install docs now point to the local v0.15 archive path and keep public GitHub release publishing behind explicit approval.
+
+### Not Included
+
+- Fully unattended scheduled automation.
+- Public push, tag, GitHub release, or package-registry publish without separate approval.
+
 ## [0.14.0] - 2026-06-04
 
 ### Added
