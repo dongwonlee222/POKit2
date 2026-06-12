@@ -1,10 +1,39 @@
 {
-  "name": "pokit2-starter",
-  "version": "0.18.0",
-  "description": "POKit2 starter — issue-driven AI work harness (one-line installer)",
+  "name": "pokit2",
+  "version": "0.19.0",
   "type": "module",
-  "license": "MIT",
+  "files": [
+    "bin/",
+    "scripts/",
+    ".ai-os/standards/",
+    ".ai-os/templates/",
+    "starter/AGENTS.md",
+    "starter/.claude/",
+    "starter/.ai-os/current.md",
+    "starter/.ai-os/status-board.md",
+    "starter/.ai-os/failure-index.md",
+    "starter/.ai-os/issue-index.md",
+    "starter/.ai-os/artifact-index.md",
+    "starter/.ai-os/memory-index.md",
+    "starter/.ai-os/memory/",
+    "starter/.ai-os/events/",
+    "starter/.ai-os/sprints/",
+    "starter/.ai-os/POK-001.md",
+    "starter/.ai-os/projects.yaml",
+    "contracts/",
+    "docs/onboarding/"
+  ],
   "bin": {
-    "pokit2-starter": "scripts/pokit-init.mjs"
+    "pokit": "./bin/pokit.mjs"
+  },
+  "scripts": {
+    "test": "node --test tests/*.mjs",
+    "doctor": "node scripts/pokit-doctor.mjs",
+    "runner": "node scripts/pokit-runner.mjs \"$PWD\"",
+    "smoke:cli": "node bin/pokit.mjs --help",
+    "sprint-close": "node scripts/pokit-sprint-close.mjs",
+    "sync": "node scripts/pokit-sync.mjs",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "hooks:backfill": "node scripts/pokit-backfill-after-gate-pass.mjs"
   }
 }

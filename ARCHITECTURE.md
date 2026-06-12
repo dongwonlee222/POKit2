@@ -91,9 +91,9 @@ artifacts/
 
 These folders are for user-created issues, project documents, generated artifacts, and sprint state after installation. They must not contain development-repo work history in the public starter.
 
-## Starter Runtime Surface
+## Runtime Surface
 
-The public starter ships standalone user-facing scripts:
+The npm package ships standalone user-facing scripts under `scripts/`:
 
 ```text
 scripts/
@@ -104,12 +104,9 @@ scripts/
 |-- pokit-list-evidence.mjs
 |-- pokit-measure-startup.mjs
 `-- pokit-sprint-close.mjs
-
-tests/
-`-- starter-smoke.test.mjs
 ```
 
-The development repository has many more `scripts/lib` modules, hooks, adapters, and regression tests. Those are POKit2 development machinery, not required starter payload. Public starter commands are kept standalone so a new user can run doctor, smoke test, evidence listing, metrics measurement, and retro setup without inheriting internal work history.
+The development repository also contains `scripts/lib` modules, hooks, provider adapters, and internal regression tests. Those are POKit2 development machinery that ship inside the package but are not the primary user-facing surface. Public starter commands are kept standalone so a new user can run doctor, evidence listing, metrics measurement, and retro setup without inheriting internal work history.
 
 ## Root Folder Policy
 
@@ -137,14 +134,15 @@ POKit2 uses multiple verification layers:
 
 ## Packaging Boundary
 
-`starter-manifest.yaml` is the public starter packaging boundary. Packaging is include-only.
+POKit2 is published as an npm package. The `package.json` `files` field is the packaging boundary.
 
-- Files listed in `include:` are copied.
-- `starter/.ai-os/**` is materialized as `.ai-os/**`.
-- Public scaffold marker files are materialized under `projects/`, `docs/`, `artifacts/`, and `.ai-os/sprints/`.
-- Root development `.ai-os/**` is never copied into the public starter.
-- Real issues, specs, sprint memory, run logs, event receipts, private links, personal paths, secrets, local runtime settings, release outputs, and distribution artifacts are excluded.
-- Full development `scripts/lib`, hooks, provider adapters, and internal regression tests are excluded unless promoted to a public standalone user command.
+- `bin/`: installable CLI entrypoint.
+- `scripts/`: runtime scripts installed as the package payload.
+- `.ai-os/standards/` and `.ai-os/templates/`: shipped standards and templates.
+- `starter/AGENTS.md`, `starter/.claude/`, `starter/.ai-os/`: installation seed files materialized into the user's project on `pokit init`.
+- `contracts/` and `docs/onboarding/`: durable contracts and onboarding docs.
+
+On install, seed files under `starter/` are written once into the user's project root (e.g., `starter/.ai-os/current.md` → `.ai-os/current.md`). Development history, real issues, sprint memory, run logs, event receipts, personal paths, and secrets are never included.
 
 ## Starter Versus Development Repository
 
@@ -170,16 +168,14 @@ Excluded:
 
 ## Release Boundary
 
-A README update or starter archive is not itself a release claim.
+A README update is not itself a release claim.
 
 Release claims require:
 
 - current release issue
-- archive path
-- checksum and byte size
-- starter self-test
+- npm publish or GitHub release evidence
 - doctor pass
 - diff check
 - explicit external action evidence when publishing
 
-External install QA runs after the public starter release candidate is prepared.
+External install QA runs after the npm package release candidate is prepared.

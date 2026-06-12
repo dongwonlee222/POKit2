@@ -1,40 +1,28 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
+import {
+  buildGroupedBacklog,
+  buildIssueIndexRows,
+  buildProjectLocalIssueRows,
+  markdownTable,
+  parseArgs,
+  renderGroupedBacklogCard,
+} from './lib/derived-index.mjs';
 
-import { listIssueFiles, parseFrontmatter } from './pokit-project-contract.mjs';
+const args = parseArgs(process.argv.slice(2));
 
-const root = process.cwd();
-const rows = [];
+if (args.grouped) {
+  const grouped = await buildGroupedBacklog(args.root, { sprint: args.sprint, groupBy: args.groupBy });
+  console.log(renderGroupedBacklogCard(grouped));
+} else {
+  const rows = args.projectLocal
+    ? await buildProjectLocalIssueRows(args.root, {
+      status: args.status,
+    })
+    : await buildIssueIndexRows(args.root, {
+      sprint: args.sprint,
+      status: args.status,
+    });
 
-for (const { relativePath, project } of await listIssueFiles(root)) {
-  const text = await readFile(path.join(root, relativePath), 'utf8');
-  const fm = parseFrontmatter(text);
-  rows.push({
-    id: fm.id ?? path.basename(relativePath, '.md'),
-    project: fm.project ?? project.key,
-    title: fm.title ?? firstHeading(text) ?? path.basename(relativePath),
-    status: fm.status ?? fm.gate_state ?? fm.canonical_state ?? 'unknown',
-    path: relativePath,
-  });
-}
-
-console.log(markdownTable(['Issue', 'Project', 'Title', 'Status', 'Path'], rows.map((row) => [
-  row.id,
-  row.project,
-  row.title,
-  row.status,
-  `\`${row.path}\``,
-])));
-
-function firstHeading(text) {
-  return text.match(/^#\s+(.+)$/m)?.[1] ?? null;
-}
-
-function markdownTable(headers, rows) {
-  return [
-    `| ${headers.join(' | ')} |`,
-    `| ${headers.map(() => '---').join(' | ')} |`,
-    ...rows.map((row) => `| ${row.join(' | ')} |`),
-  ].join('\n');
+  console.log('<!-- generated preview: source of truth is issue card frontmatter -->');
+  console.log(markdownTable(['ID', 'Title', 'Status', 'Sprint', 'Path'], rows));
 }

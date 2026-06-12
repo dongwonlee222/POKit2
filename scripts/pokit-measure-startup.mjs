@@ -1,45 +1,89 @@
 #!/usr/bin/env node
+// POK-141 — startup/work read budget estimator.
+//
+// Parses `.ai-os/current.md` for `start_read_order` and `work_read_order`,
+// reads each referenced file, and estimates token counts using a conservative
+// `bytes / 4` heuristic (1 token ≈ 4 bytes for English text — slight under-
+// count for CJK, which is acceptable for a budget gate).
+//
+// Output: JSON to stdout with startup_token_count, work_read_token_count,
+// total_session_input, and per-file breakdown for debugging.
+
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = process.cwd();
-const current = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
-const startup = await measure(readOrder(current, 'start_read_order'));
-const work = await measure(readOrder(current, 'work_read_order'));
+const SECTION_HEADERS = {
+  startup: /^##\s+start_read_order\s*$/m,
+  work: /^##\s+work_read_order\s*$/m,
+};
 
-console.log(JSON.stringify({
-  status: 'pass',
-  startup_token_count: startup.tokens,
-  work_read_token_count: work.tokens,
-  total_session_input: startup.tokens + work.tokens,
-  breakdown: { startup: startup.files, work: work.files },
-}, null, 2));
-
-function readOrder(text, heading) {
-  const match = new RegExp(`^##\\s+${heading}\\s*$`, 'm').exec(text);
+export function parseReadOrder(currentMdText, sectionName) {
+  const header = SECTION_HEADERS[sectionName];
+  if (!header) throw new Error(`Unknown section: ${sectionName}`);
+  const match = header.exec(currentMdText);
   if (!match) return [];
-  const rest = text.slice(match.index + match[0].length);
-  const next = /\n##\s+/.exec(rest);
-  const section = next ? rest.slice(0, next.index) : rest;
-  return section
-    .split('\n')
-    .map((line) => line.match(/^\d+\.\s+`([^`]+)`/)?.[1])
-    .filter(Boolean);
+  const sliceStart = match.index + match[0].length;
+  const remainder = currentMdText.slice(sliceStart);
+  const nextHeader = /\n##\s+/.exec(remainder);
+  const section = nextHeader ? remainder.slice(0, nextHeader.index) : remainder;
+
+  const paths = [];
+  for (const rawLine of section.split('\n')) {
+    const line = rawLine.trim();
+    // Match numbered list items with backticked paths: `1. \`some/path\``
+    const m = line.match(/^\d+\.\s+`([^`]+)`/);
+    if (m) paths.push(m[1]);
+  }
+  return paths;
 }
 
-async function measure(files) {
-  const rows = [];
-  let bytes = 0;
-  for (const file of files) {
-    let size = 0;
+export function estimateTokens(byteCount) {
+  return Math.ceil(byteCount / 4);
+}
+
+async function measureFiles(root, relPaths) {
+  const breakdown = [];
+  let totalBytes = 0;
+  for (const rel of relPaths) {
+    const abs = path.join(root, rel);
+    let bytes = 0;
     let exists = true;
     try {
-      size = (await stat(path.join(root, file))).size;
+      const st = await stat(abs);
+      bytes = st.size;
     } catch {
       exists = false;
     }
-    bytes += size;
-    rows.push({ path: file, bytes: size, tokens: Math.ceil(size / 4), exists });
+    totalBytes += bytes;
+    breakdown.push({ path: rel, bytes, tokens: estimateTokens(bytes), exists });
   }
-  return { tokens: Math.ceil(bytes / 4), files: rows };
+  return { totalBytes, totalTokens: estimateTokens(totalBytes), breakdown };
+}
+
+export async function measureStartup({ root = process.cwd() } = {}) {
+  const currentMd = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
+  const startupPaths = parseReadOrder(currentMd, 'startup');
+  const workPaths = parseReadOrder(currentMd, 'work');
+
+  const startup = await measureFiles(root, startupPaths);
+  const work = await measureFiles(root, workPaths);
+
+  return {
+    startup_token_count: startup.totalTokens,
+    work_read_token_count: work.totalTokens,
+    total_session_input: startup.totalTokens + work.totalTokens,
+    breakdown: {
+      startup: startup.breakdown,
+      work: work.breakdown,
+    },
+  };
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+const modulePath = fileURLToPath(import.meta.url);
+
+if (invokedPath === modulePath) {
+  const result = await measureStartup({ root: process.cwd() });
+  console.log(JSON.stringify(result, null, 2));
 }

@@ -1,5 +1,6 @@
 # Handoff Rotation Policy
 
+> **산출물**: POK-302 (gate_passed)
 > **범위**: 스프린트 없는 프로젝트의 `handoff.md` 회전 정책 + 스프린트 있는 프로젝트 보완
 
 ---
@@ -24,7 +25,9 @@ handoff.md 회전이 필요한가?
 
 ---
 
-## 2. Archive 파일명 컨벤션
+## 2. 스프린트 없는 Archive 파일명 컨벤션
+
+기존 스프린트 패턴 `handoff-<sprint>.md`와 충돌하지 않도록 다음 중 하나를 사용한다.
 
 **권장: 날짜 기반**
 ```
@@ -32,7 +35,13 @@ handoff.md 회전이 필요한가?
 예: handoff-2026-06-09.md
 ```
 
-기존 glob `handoff-v*.md`와 겹치지 않음. 날짜가 명확해 조회 용이.
+기존 glob `handoff-v*.md` 와 겹치지 않음. 날짜가 명확해 조회 용이.
+
+**대안: 순번 기반** (날짜 없이 연속 운영 시)
+```
+.ai-os/memory/session/archive/handoff-rotation-NNN.md
+예: handoff-rotation-001.md
+```
 
 **Archive Pointer 섹션 갱신 규칙**:
 회전 후 `handoff.md`의 `## Archive Pointer` 섹션에 새 항목을 추가한다.
@@ -54,7 +63,22 @@ handoff.md 회전이 필요한가?
 
 ---
 
-## 4. 재시작 복구 보장
+## 4. v0.16 범위: 수동 정책 + doctor 경고
+
+**v0.16에서 구현하는 것:**
+- 이 정책 문서 (`handoff-rotation.md`)
+- doctor 경고: handoff.md가 T3(100줄) 초과 시 `[warn]` 출력
+
+**v0.16에서 구현하지 않는 것 (후속 이슈):**
+- runner 자동 회전 (PO 승인 없이 handoff 파일을 자동 이동/재작성)
+- 이슈 완료 hook 연동 (T1 자동 트리거)
+- 날짜 기반 자동 스케줄 (T2 자동 트리거)
+
+이유: POK-236 계약 — multi-project 모드에서 `handoff.md`는 rendered view이며, runner가 canonical state를 임의로 재작성하면 안 됨. 자동화는 별도 이슈에서 길목 가드로.
+
+---
+
+## 5. 재시작 복구 보장
 
 회전 후 다음 두 가지가 보장되어야 한다:
 
@@ -68,7 +92,7 @@ handoff.md 회전이 필요한가?
 
 ---
 
-## 5. 수동 회전 절차
+## 6. 수동 회전 절차
 
 doctor 경고 또는 PO 판단 시 아래 순서로 수행한다.
 
@@ -86,4 +110,29 @@ cp .ai-os/memory/session/handoff.md \
 
 # 4. 검증
 node scripts/pokit-doctor.mjs
+```
+
+---
+
+## 7. 후속 구현 이슈 scope 후보
+
+runner 자동 회전 구현 시 수정 대상:
+
+| 파일 | 역할 |
+|------|------|
+| `.ai-os/standards/handoff-rotation.md` | 이 정책 문서 (SSoT) |
+| `scripts/pokit-doctor.mjs` | T3 크기 경고 추가 길목 |
+| `scripts/lib/` 내 handoff 처리 모듈 | 회전/archive 동작 구현 |
+| `.ai-os/memory/session/handoff.md` | 회전 대상 + Archive Pointer 갱신 |
+
+후속 구현 이슈 conflict_scope (채번 전 후보):
+
+```yaml
+conflict_scope:
+  files:
+    - .ai-os/standards/handoff-rotation.md
+    - scripts/pokit-doctor.mjs
+    - .ai-os/memory/session/handoff.md
+  artifacts: []
+follow_up_issue: TBD (POK-302 gate_passed 후 /pokit.backlog로 채번)
 ```

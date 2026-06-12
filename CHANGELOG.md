@@ -1,6 +1,25 @@
 # Changelog
 
-This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
+This public changelog tracks the published `pokit2` package and its public source surfaces. Internal development issues, sprint memory, receipts, and work history are intentionally excluded.
+
+## [0.19.0] - 2026-06-12
+
+### Added
+
+- npm registry package: `pokit2` is now published to npm. Install with `npx pokit2 install` — no GitHub archive needed.
+- `pokit install`: writes the thin project residue (`AGENTS.md` marker block, `.claude/skills/pokit-*`, seed `.ai-os`), and automatically migrates legacy v0.18 full-copy installs while preserving user state.
+- `pokit update`: regenerates tool-owned files (marker block, thin skills, `pokit_version`) and never touches user-owned state. Refuses unknown `schema_version`.
+- `pokit doctor` detects `pokit_version` drift between project and installed package.
+- Engine guards: auto-numbered issue creation is allowed in a fresh project (no active issue yet) and still blocked when an active issue exists; `pokit install` refuses to run inside a POKit2 source checkout; doctor resolves tool-owned standards from the installed package for thin projects.
+
+### Changed
+
+- Topology: the harness body (scripts, standards, seeds) lives once in the global package; each project keeps only three items — `AGENTS.md`, `.claude/skills`, `.ai-os`.
+- README and onboarding docs rewritten for the npm-package install path, with an "Everyday commands" / "Agent and advanced commands" split and a legacy v0.18 migration section.
+
+### Removed
+
+- Legacy archive distribution surface: `starter/scripts`, `starter/tests`, the archive build tooling, and `starter-manifest.yaml`. Install seeds remain under `starter/`.
 
 ## [0.18.0] - 2026-06-11
 

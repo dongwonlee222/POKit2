@@ -1,12 +1,72 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runDoctor } from './pokit-doctor.mjs';
-// 정확 패턴 통일(자릿수/접두)은 후속 SSoT 작업; 여기선 기존 prefix-agnostic 패턴 재사용
-import { findIssue, ISSUE_ID_PATTERN } from './pokit-project-contract.mjs';
-import { hasActiveIssue, renderDraftCard } from './active-issue-guard.mjs';
+import { buildGroupedBacklog, renderGroupedBacklogCard } from './lib/derived-index.mjs';
+import { resolveAgentProfileDispatch } from './lib/agent-profile-dispatcher.mjs';
+import {
+  ASSIGNMENT_BY_AGENT_PROFILE,
+  DEFAULT_ASSIGNMENT,
+  MAIN_AGENT_REQUIRED_ACTIONS,
+} from './lib/assignment-model-tiers.mjs';
+import { detectProvider } from './lib/hook-emit.mjs';
+import {
+  appendIssueExecutionEnteredReceipt,
+  appendPostRunnerExecutionLockReceipt,
+  appendSkillExecutionCheckpointReceipt,
+  loadSkillExecutionCheckpointMap,
+} from './lib/event-log.mjs';
+import { buildSafeStepPlan } from './lib/safe-step-policy.mjs';
+import { classifyCommitStatus } from './lib/commit-status.mjs';
+import { buildCompleteCardFields, runCompleteCommand } from './lib/complete-card.mjs';
+export { buildCompleteCardFields, runCompleteCommand };
+export { deriveIssueDurationFromCard, parseFrontmatterTimestamp } from './lib/issue-duration.mjs';
+import { issueMetricsPath } from './lib/issue-metrics.mjs';
+export {
+  recordIssueCompletionMetrics,
+  recordIssueStartMarker,
+  readIssueStartMarker,
+  readPriorMetricsTimes,
+  readLastDurableChangeMs,
+  readGitChangeStats,
+} from './lib/gate-pass-metrics.mjs';
+import {
+  recordIssueCompletionMetrics,
+  recordIssueStartMarker,
+} from './lib/gate-pass-metrics.mjs';
+import { runGatePassCommand, parseMetricsArgs, parseBoolFlagValue } from './lib/gate-pass-orchestrator.mjs';
+export { runGatePassCommand, parseMetricsArgs, parseBoolFlagValue };
+// POK-327 — 실패 기록·이어가기: record-failure 명령 + 시작 카드 실패 안내.
+import { parseFailureContext, buildFailureNoticeFields, recordFailureContext } from './lib/failure-context.mjs';
+export { parseFailureContext, buildFailureNoticeFields, recordFailureContext };
+// POK-325 — friction-automation chokepoints: transition card-status sync +
+// definition-change issue_authored reissue, both runner-owned subcommands.
+import { runTransitionStatusCommand } from './lib/issue-status-sync.mjs';
+export { runTransitionStatusCommand, syncIssueCardStatus } from './lib/issue-status-sync.mjs';
+import { reissueIssueAuthoredReceipt } from './lib/issue-create.mjs';
+export { reissueIssueAuthoredReceipt };
+import {
+  renderCompleteCard,
+  renderExecutionReasoningChecklistCard,
+  renderPreExecutionPreviewCard,
+  renderStartupLifecycleCard,
+} from './lib/lifecycle-card-renderer.mjs';
+import { resolveActiveIssuePath } from './lib/issue-paths.mjs';
+import { assertIssueId, extractIssueId, isIssueId, ISSUE_ID_SOURCE } from './lib/issue-id.mjs';
+import { readActiveIssueForWorktree } from './lib/worktree-active-issue.mjs';
+import { plainifyUserText } from './lib/user-text.mjs';
+import { acquireIssueLock, releaseLock } from './lib/worktree-locks.mjs';
+import { ensureCurrentSession, listActiveIssueClaims, readTaskSession } from './lib/worktree-sessions.mjs';
+import { listProposedUpdates } from './lib/proposed-updates.mjs';
+import {
+  buildTaskSessionGuidanceCard,
+  buildIntegrationGuidanceCard,
+  buildSessionStatusCard,
+  renderSessionGuidanceCard,
+} from './lib/session-guidance-cards.mjs';
+import { measureStartup } from './pokit-measure-startup.mjs';
+import { parseFrontmatter } from './lib/issue-frontmatter.mjs';
 
 const POKIT_PHRASES = [
   '$pokit',
@@ -21,8 +81,9 @@ const POKIT_PHRASES = [
 // SSoT for execution-approval synonyms: `.ai-os/standards/agent-invocation.md`
 // (`authorized_phrases`). These are matched as whole-input phrases after
 // lowercasing and internal-whitespace normalization, so single-syllable entries
-// like '고' never match as a substring of ordinary conversation.
-// Ported verbatim from scripts/pokit-runner.mjs lines 61-75.
+// like '고' never match as a substring of ordinary conversation. Review-intent
+// phrases ("확인해줘", "검토해줘", "봐줘") are deliberately excluded — they do not
+// approve execution.
 const EXECUTION_REQUEST_PHRASES = [
   '진행해줘',
   '그럽시다',
@@ -39,17 +100,27 @@ const EXECUTION_REQUEST_PHRASES = [
   '오케이 해줘',
 ];
 
-const TRANSITION_REQUEST_PHRASES = [
-  '/pokit.next',
-  '다음으로',
-  '1번',
-  '제안대로',
-  '바로 이어',
-  '이어서 진행',
-  '다음 진행해줘',
+// POK-246 (AC3) — "지금 뭐 하면 돼?" natural-language status query. Matched as a
+// whole input after whitespace normalization so it never fires as a substring of
+// ordinary conversation.
+const SESSION_STATUS_PHRASES = [
+  '지금 뭐 하면 돼',
+  '지금 뭐 하면 돼?',
+  '지금 뭐 하면 되',
+  '지금 뭐 하면 되지',
+  '지금 뭐 하지',
+  '지금 뭐 해야 돼',
+  '뭐 하면 돼',
+  '뭐 하면 돼?',
+  '지금 뭐하면돼',
 ];
 
-// Ported verbatim from scripts/pokit-runner.mjs lines 92-99.
+const BACKLOG_VIEW_PHRASES = [
+  '백로그',
+  '남은항목',
+  '남은 항목',
+];
+
 const EXECUTION_MODE_SELECTIONS = Object.freeze({
   a: Object.freeze({ mode: 'manual-confirm', worker_authorization: 'not_required' }),
   '수동': Object.freeze({ mode: 'manual-confirm', worker_authorization: 'not_required' }),
@@ -59,6 +130,14 @@ const EXECUTION_MODE_SELECTIONS = Object.freeze({
   '중단': Object.freeze({ mode: 'stop', worker_authorization: 'not_required' }),
 });
 
+const VALID_POST_RUNNER_WORKER_DECISIONS = new Set(['fan-out', 'fallback']);
+const VALID_POST_RUNNER_FALLBACK_REASONS = new Set([
+  'worker-unavailable',
+  'global-state-only',
+  'cross-file-invariant',
+  'trivial-scope',
+]);
+
 const RUNNER_COMMAND_CONTRACTS = Object.freeze({
   '/pokit add': Object.freeze([
     'command',
@@ -66,7 +145,6 @@ const RUNNER_COMMAND_CONTRACTS = Object.freeze({
     'target_project',
     'proposed_issue',
     'lifecycle_card',
-    'rendered_lifecycle_card',
     'approval_required',
   ]),
   '/pokit dispatch': Object.freeze([
@@ -74,7 +152,6 @@ const RUNNER_COMMAND_CONTRACTS = Object.freeze({
     'target_issue',
     'runner_assignment',
     'lifecycle_card',
-    'rendered_lifecycle_card',
     'approval_required',
   ]),
   '/pokit gate': Object.freeze([
@@ -82,53 +159,31 @@ const RUNNER_COMMAND_CONTRACTS = Object.freeze({
     'target_issue',
     'required_evidence',
     'lifecycle_card',
-    'rendered_lifecycle_card',
     'approval_required',
   ]),
 });
 
-const ASSIGNMENT_BY_AGENT_PROFILE = Object.freeze({
-  planner: Object.freeze({
-    worker_kind: 'planner_worker',
-    difficulty: 'standard',
-    model_tier: 'strong',
-    runtime_preference: 'auto',
-    provider_model_source: 'config_resolved_only',
-    permission_level: 'propose_only',
-  }),
-  coder: Object.freeze({
-    worker_kind: 'implementation_worker',
-    difficulty: 'standard',
-    model_tier: 'standard',
-    runtime_preference: 'auto',
-    provider_model_source: 'config_resolved_only',
-    permission_level: 'write_scoped',
-  }),
-  reviewer: Object.freeze({
-    worker_kind: 'review_worker',
-    difficulty: 'standard',
-    model_tier: 'strong',
-    runtime_preference: 'auto',
-    provider_model_source: 'config_resolved_only',
-    permission_level: 'read_only',
-  }),
-  'data-analyst': Object.freeze({
-    worker_kind: 'data_worker',
-    difficulty: 'standard',
-    model_tier: 'standard',
-    runtime_preference: 'auto',
-    provider_model_source: 'config_resolved_only',
-    permission_level: 'read_only',
-  }),
-});
-
-const DEFAULT_ASSIGNMENT = Object.freeze({
-  worker_kind: 'main_session',
-  difficulty: 'standard',
-  model_tier: 'standard',
-  runtime_preference: 'auto',
-  provider_model_source: 'config_resolved_only',
-  permission_level: 'main_only',
+const STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY = Object.freeze({
+  level: 'startup_or_transition',
+  reason: 'Startup and transition only need lightweight state recovery before durable work.',
+  required_checks: Object.freeze([
+    Object.freeze({ id: 'read_current_state', label: 'current state', evidence: 'command_summary' }),
+    Object.freeze({ id: 'resolve_active_issue_path', label: 'active issue', evidence: 'command_summary' }),
+    Object.freeze({ id: 'measure_startup_budget', label: 'startup budget', evidence: 'compact_evidence' }),
+  ]),
+  optional_checks: Object.freeze([
+    Object.freeze({ id: 'focused_runner_test', trigger: 'runner behavior changed' }),
+    Object.freeze({ id: 'git_diff_check', trigger: 'durable files changed during transition' }),
+  ]),
+  forbidden_by_default: Object.freeze([
+    Object.freeze({ id: 'doctor', unless: 'gate claim or explicit audit' }),
+    Object.freeze({ id: 'full_tests', unless: 'shared executable behavior changed' }),
+    Object.freeze({ id: 'full_doctor_log', unless: 'investigating doctor failure' }),
+    Object.freeze({ id: 'broad_evals', unless: 'targeted agent-behavior risk is under review' }),
+  ]),
+  po_evidence_mode: 'compact',
+  stale_evidence_policy: 'not_applicable',
+  consumer: 'runner',
 });
 
 export function matchesPokitPhrase(phrase) {
@@ -137,7 +192,6 @@ export function matchesPokitPhrase(phrase) {
   return POKIT_PHRASES.some((entry) => entry.toLocaleLowerCase('ko-KR') === normalized.toLocaleLowerCase('ko-KR'));
 }
 
-// Ported from scripts/pokit-runner.mjs lines 208-213.
 function matchesExecutionRequestPhrase(text) {
   const normalized = text.toLocaleLowerCase('ko-KR').replace(/\s+/g, '');
   return EXECUTION_REQUEST_PHRASES.some(
@@ -145,9 +199,16 @@ function matchesExecutionRequestPhrase(text) {
   );
 }
 
-function matchesTransitionRequestPhrase(text) {
+function matchesSessionStatusPhrase(text) {
+  const normalized = text.toLocaleLowerCase('ko-KR').replace(/\s+/g, '').replace(/\?+$/, '');
+  return SESSION_STATUS_PHRASES.some(
+    (entry) => entry.toLocaleLowerCase('ko-KR').replace(/\s+/g, '').replace(/\?+$/, '') === normalized,
+  );
+}
+
+function matchesBacklogViewPhrase(text) {
   const normalized = text.toLocaleLowerCase('ko-KR').replace(/\s+/g, '');
-  return TRANSITION_REQUEST_PHRASES.some(
+  return BACKLOG_VIEW_PHRASES.some(
     (entry) => entry.toLocaleLowerCase('ko-KR').replace(/\s+/g, '') === normalized,
   );
 }
@@ -155,26 +216,8 @@ function matchesTransitionRequestPhrase(text) {
 export function classifyPokitCommand(phrase) {
   const raw = typeof phrase === 'string' ? phrase.trim() : '';
   const lower = raw.toLocaleLowerCase('ko-KR');
+  const normalizedApproval = lower.replace(/\s+/g, '');
 
-  if (matchesTransitionRequestPhrase(raw)) {
-    return {
-      kind: 'transition_request',
-      command: raw,
-      raw,
-      mutates_state: false,
-      requires_human_approval: true,
-      output_fields: [
-        'command',
-        'active_issue',
-        'issue_path',
-        'next_transition_card',
-        'approval_required',
-      ],
-    };
-  }
-
-  // Ported from scripts/pokit-runner.mjs lines 227-262.
-  // Plain execution-approval synonyms (e.g. "진행해줘", "고", "고고").
   if (matchesExecutionRequestPhrase(raw)) {
     return {
       kind: 'execution_request',
@@ -192,19 +235,15 @@ export function classifyPokitCommand(phrase) {
     };
   }
 
-  // A leading "<ISSUE-ID> " token only NAMES the execution target; the execution
-  // synonym must still be recognized in the remainder (e.g. "<ISSUE-ID> 진행하자",
-  // "GG-001 고"). Uses ISSUE_ID_PATTERN (prefix-agnostic) per AC3.
-  // Generalised from scripts/pokit-runner.mjs lines 246-263 (was /^(POK-\d{3})\s+/).
-  // Strip ^ and $ anchors from ISSUE_ID_PATTERN.source before embedding in target regex.
-  const issueIdInner = ISSUE_ID_PATTERN.source.replace(/^\^/, '').replace(/\$$/, '');
-  const targetMatch = raw.match(new RegExp(`^(${issueIdInner})\\s+(.+)$`, 'i'));
+  // A leading issue id only NAMES the execution target; the execution synonym
+  // must still be recognized in the remainder (e.g. "POK-233 진행하자").
+  const targetMatch = raw.match(new RegExp(`^(${ISSUE_ID_SOURCE})\\s+(.+)$`, 'i'));
   if (targetMatch && matchesExecutionRequestPhrase(targetMatch[2])) {
     return {
       kind: 'execution_request',
       command: raw,
       raw,
-      target_issue: targetMatch[1].toUpperCase(),
+      target_issue: assertIssueId(targetMatch[1]),
       mutates_state: false,
       requires_human_approval: true,
       output_fields: [
@@ -217,7 +256,6 @@ export function classifyPokitCommand(phrase) {
     };
   }
 
-  // Ported from scripts/pokit-runner.mjs lines 265-286.
   const selectedMode = EXECUTION_MODE_SELECTIONS[lower];
   if (selectedMode) {
     return {
@@ -235,7 +273,38 @@ export function classifyPokitCommand(phrase) {
         'mode',
         'worker_authorization',
         'execution_reasoning_checklist',
+        'post_runner_execution_lock',
         'approval_required',
+      ],
+    };
+  }
+
+  if (matchesSessionStatusPhrase(raw)) {
+    return {
+      kind: 'session_status',
+      command: raw,
+      raw,
+      mutates_state: false,
+      requires_human_approval: false,
+      output_fields: [
+        'command',
+        'session_guidance_card',
+        'rendered_session_guidance_card',
+      ],
+    };
+  }
+
+  if (matchesBacklogViewPhrase(raw)) {
+    return {
+      kind: 'backlog_view',
+      command: raw,
+      raw,
+      mutates_state: false,
+      requires_human_approval: false,
+      output_fields: [
+        'command',
+        'backlog_card',
+        'rendered_backlog_card',
       ],
     };
   }
@@ -265,223 +334,342 @@ export function classifyPokitCommand(phrase) {
       'issue_path',
       'runner_assignment',
       'lifecycle_card',
-      'rendered_lifecycle_card',
       'approval_required',
     ],
   };
 }
 
-export async function resolveIssuePath(issueId, root = process.cwd()) {
-  if (!ISSUE_ID_PATTERN.test(issueId ?? '')) {
-    throw new Error(`Invalid POKit issue id: ${issueId}`);
-  }
-  return (await findIssue(root, issueId))?.relativePath ?? `.ai-os/${issueId}.md`;
-}
+export function resolveVerificationIntensity({ command, gateState, issueStatus } = {}) {
+  const commandKind = typeof command === 'string' ? command : command?.kind;
+  const isStartupOrTransition =
+    commandKind === 'startup_trigger' ||
+    gateState === 'gate_passed' ||
+    issueStatus === 'gate_passed';
 
-export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } = {}) {
-  const command = classifyPokitCommand(phrase);
-
-  // ── D3: execution_request + no active_issue → blocking_draft card ──────────
-  // ── AC3: execution_request + active_issue exists → pre_execution_preview card ──
-  if (command.kind === 'execution_request' || command.kind === 'transition_request') {
-    const activeExists = await hasActiveIssue(root);
-    if (!activeExists) {
-      const workSummary = command.target_issue
-        ? `${command.target_issue} 실행 요청`
-        : phrase;
-      const draftCardText = renderDraftCard({}, workSummary);
-      const blockingCard = buildBlockingDraftCardFields({ workSummary, draftCardText });
-      const renderedBlockingCard = renderBlockingDraftCard({ blockingCard });
-      return {
-        status: 'ok',
-        phraseMatched: false,
-        command,
-        activeIssue: null,
-        issuePath: null,
-        runnerAssignment: null,
-        lifecycleCard: blockingCard,
-        renderedLifecycleCard: renderedBlockingCard,
-        doctor: null,
-        counts: null,
-        warnings: [],
-        failures: [],
-        nextAction: '이슈 생성 후 실행하세요: node scripts/pokit-issue-create.mjs --title "<제목>"',
-      };
-    } else {
-      const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
-      const current = parseFrontmatter(currentText);
-      const activeIssue = current.active_issue ?? null;
-      const issuePath = activeIssue ? await resolveIssuePath(activeIssue, root) : null;
-      let issueText = '';
-      let issue = {};
-      if (issuePath) {
-        try {
-          issueText = await readFile(path.join(root, issuePath), 'utf8');
-          issue = parseFrontmatter(issueText);
-        } catch {
-          // File may not exist yet; proceed with empty issue.
-        }
-      }
-      const gateState = current.gate_state ?? issue.gate_state ?? null;
-      if (gateState === 'gate_passed' || command.kind === 'transition_request') {
-        const nextCard = buildNextTransitionRequiredCardFields({
-          activeIssue,
-          issue,
-          gateState,
-          command,
-        });
-        const renderedNextCard = renderNextTransitionRequiredCard({ nextCard });
-        return {
-          status: 'ok',
-          phraseMatched: false,
-          command,
-          activeIssue,
-          issuePath,
-          runnerAssignment: resolveRunnerAssignment(issue),
-          lifecycleCard: nextCard,
-          renderedLifecycleCard: renderedNextCard,
-          doctor: null,
-          counts: null,
-          warnings: [],
-          failures: [],
-          nextAction: nextCard.fields?.next_step ?? null,
-        };
-      }
-      // AC3: active issue exists and is not gate_passed → return pre-execution preview card (a/b/c selection)
-      const previewCard = buildPreExecutionPreviewCardFields({ activeIssue, issue, issueText });
-      const renderedPreExecutionPreviewCard = renderPreExecutionPreviewCard({ previewCard });
-      return {
-        status: 'ok',
-        phraseMatched: false,
-        command,
-        activeIssue,
-        issuePath,
-        runnerAssignment: resolveRunnerAssignment(issue),
-        lifecycleCard: previewCard,
-        renderedLifecycleCard: renderedPreExecutionPreviewCard,
-        renderedPreExecutionPreviewCard,
-        doctor: null,
-        counts: null,
-        warnings: [],
-        failures: [],
-        nextAction: 'a) 수동  b) 자동  c) 중단 중 하나를 선택하세요.',
-      };
-    }
-  }
-
-  // ── D6: execution_mode_selection → reasoning checklist card ────────────────
-  if (command.kind === 'execution_mode_selection') {
-    const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
-    const current = parseFrontmatter(currentText);
-    const activeIssue = current.active_issue ?? null;
-    const issuePath = activeIssue ? await resolveIssuePath(activeIssue, root) : null;
-    const issue = issuePath ? await readIssueFrontmatter(root, issuePath) : {};
-    const gateState = current.gate_state ?? issue.gate_state ?? null;
-
-    if (gateState === 'gate_passed') {
-      const nextCard = buildNextTransitionRequiredCardFields({
-        activeIssue,
-        issue,
-        gateState,
-        command,
-      });
-      const renderedNextCard = renderNextTransitionRequiredCard({ nextCard });
-      return {
-        status: 'ok',
-        phraseMatched: false,
-        command,
-        activeIssue,
-        issuePath,
-        runnerAssignment: resolveRunnerAssignment(issue),
-        lifecycleCard: nextCard,
-        renderedLifecycleCard: renderedNextCard,
-        doctor: null,
-        counts: null,
-        warnings: [],
-        failures: [],
-        nextAction: nextCard.fields?.next_step ?? null,
-      };
-    }
-
-    const checklistCard = buildExecutionReasoningChecklistFields({
-      command,
-      activeIssue,
-      gateState,
-      issueStatus: issue.status ?? current.status ?? null,
-      issue,
-    });
-    const renderedChecklist = checklistCard
-      ? renderExecutionReasoningChecklistCard({ checklist: checklistCard })
-      : undefined;
-
+  if (isStartupOrTransition) {
     return {
-      status: 'ok',
-      phraseMatched: false,
-      command,
-      activeIssue,
-      issuePath,
-      runnerAssignment: resolveRunnerAssignment(issue),
-      lifecycleCard: checklistCard,
-      renderedLifecycleCard: renderedChecklist,
-      doctor: null,
-      counts: null,
-      warnings: [],
-      failures: [],
-      nextAction: checklistCard?.fields?.next_step ?? null,
+      ...STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY,
+      required_checks: STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY.required_checks.map((check) => ({ ...check })),
+      optional_checks: STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY.optional_checks.map((check) => ({ ...check })),
+      forbidden_by_default: STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY.forbidden_by_default.map((check) => ({ ...check })),
     };
   }
 
-  // ── startup_trigger / runner_command / unknown → existing startup card ──────
-  const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
+  return {
+    ...STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY,
+    required_checks: STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY.required_checks.map((check) => ({ ...check })),
+    optional_checks: STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY.optional_checks.map((check) => ({ ...check })),
+    forbidden_by_default: STARTUP_OR_TRANSITION_VERIFICATION_INTENSITY.forbidden_by_default.map((check) => ({ ...check })),
+  };
+}
+
+export async function resolveIssuePath(issueId, root = process.cwd()) {
+  if (!isIssueId(issueId)) {
+    throw new Error(`Invalid POKit issue id: ${issueId}`);
+  }
+  return resolveActiveIssuePath(root, assertIssueId(issueId));
+}
+
+// POK-246 (AC1/AC2/AC3/AC6) — the runner (runner_contract_calculator) COMPUTES and
+// PUBLISHES the session guidance card; the skill/main only displays and acts. Returns
+// null when there is no session context and no pending proposals (the normal
+// single-session dev case), so the runner's existing output is unchanged there.
+//   - inside a task session (POKIT_SESSION_ID points at a real session) → task-session card (AC1)
+//   - "지금 뭐 하면 돼?" status query → status card for the detected role (AC3)
+//   - integration/main context with pending proposed updates → integration card (AC2)
+export async function resolveSessionGuidanceCard({
+  root = process.cwd(),
+  command = null,
+  activeIssue = null,
+  sessionId = process.env.POKIT_SESSION_ID ?? null,
+} = {}) {
+  let session = null;
+  if (sessionId && /^ses_\w+/.test(sessionId)) {
+    try {
+      session = await readTaskSession(root, sessionId);
+    } catch {
+      session = null;
+    }
+  }
+
+  let pendingProposals = [];
+  if (isIssueId(activeIssue)) {
+    try {
+      const updates = await listProposedUpdates(root, { issueId: activeIssue });
+      pendingProposals = updates.filter((update) => update?.state === 'proposed');
+    } catch {
+      pendingProposals = [];
+    }
+  }
+
+  if (command?.kind === 'session_status') {
+    return buildSessionStatusCard({ session, proposedUpdates: pendingProposals });
+  }
+  if (session && session.role === 'task_session') {
+    return buildTaskSessionGuidanceCard(session);
+  }
+  if (pendingProposals.length > 0) {
+    return buildIntegrationGuidanceCard({ issueId: activeIssue, proposedUpdates: pendingProposals });
+  }
+  return null;
+}
+
+// POK-056 startup budget: lightweight state recovery only — no doctor scan, no full test, no gate evidence.
+export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } = {}) {
+  const previousSessionId = process.env.POKIT_SESSION_ID;
+  let injectedSessionId = false;
+  const currentPath = '.ai-os/current.md';
+  const currentText = await readFile(path.join(root, currentPath), 'utf8');
   const current = parseFrontmatter(currentText);
-  const activeIssue = current.active_issue ?? null;
+  let activeIssue = current.active_issue ?? null;
+  try {
+    const worktreeActive = await readActiveIssueForWorktree(root);
+    activeIssue = worktreeActive.activeIssue ?? activeIssue;
+  } catch {
+    // Keep tracked current.md fallback.
+  }
   const issuePath = activeIssue ? await resolveIssuePath(activeIssue, root) : null;
-  const issue = issuePath ? await readIssueFrontmatter(root, issuePath) : {};
-  const doctorResult = await runDoctor({ root });
-  const failures = doctorResult.items.filter((item) => item.status === 'fail');
-  const warnings = doctorResult.items.filter((item) => item.status === 'warning');
-  const nextAction = failures.find((item) => item.next_action)?.next_action
-    ?? current.next_action
-    ?? warnings.find((item) => item.next_action)?.next_action
-    ?? null;
+  const issueText = issuePath ? await readOptionalIssueText(root, issuePath) : '';
+  const issue = issueText ? parseFrontmatter(issueText) : {};
+  const releaseScope = await readReleaseScope(root, current.active_sprint);
+  const contextBudget = await measureStartup({ root });
+  const status = current.gate_state ?? 'unknown';
+  const nextAction = current.next_action ?? issue.next_action ?? null;
+  const command = classifyPokitCommand(phrase);
   const runnerAssignment = resolveRunnerAssignment(issue);
+  let hasGitMetadata = false;
+  try {
+    await stat(path.join(root, '.git'));
+    hasGitMetadata = true;
+  } catch {
+    hasGitMetadata = false;
+  }
+  if (hasGitMetadata && isIssueId(activeIssue) && !process.env.POKIT_SESSION_ID) {
+    try {
+      const ensured = await ensureCurrentSession(root, {
+        project: current.active_project ?? issue.project ?? 'pokit',
+        issueId: activeIssue,
+        engine: detectProvider(),
+        reason: `runner preflight for ${activeIssue}`,
+      });
+      process.env.POKIT_SESSION_ID = ensured.session.session_id;
+      injectedSessionId = previousSessionId === undefined;
+    } catch {
+      // Session wiring is advisory during lightweight startup; command handling
+      // still renders the normal lifecycle card and doctor surfaces drift later.
+    }
+  }
+  // POK-246 — additive session guidance card (null in the normal single-session case).
+  let sessionGuidanceCard = null;
+  let renderedSessionGuidanceCard;
+  try {
+    sessionGuidanceCard = await resolveSessionGuidanceCard({ root, command, activeIssue });
+    if (sessionGuidanceCard) {
+      renderedSessionGuidanceCard = renderSessionGuidanceCard(sessionGuidanceCard);
+    }
+  } catch {
+    // Never break startup on a guidance-card failure (additive surface).
+    sessionGuidanceCard = null;
+    renderedSessionGuidanceCard = undefined;
+  }
+  const verificationIntensity = resolveVerificationIntensity({
+    command,
+    gateState: current.gate_state ?? issue.gate_state ?? null,
+    issueStatus: issue.status ?? current.status ?? null,
+  });
   const lifecycleCard = buildStartupLifecycleCardFields({
     activeIssue,
-    status: doctorResult.status,
+    status,
     project: current.active_project ?? issue.project ?? null,
+    sprint: current.active_sprint ?? null,
     gateState: current.gate_state ?? issue.gate_state ?? null,
     issueStatus: issue.status ?? current.status ?? null,
     nextAction,
+    candidateQueue: releaseScope.candidateQueue,
+    candidateCount: releaseScope.candidateCount,
+    contextBudget,
+    failureContext: parseFailureContext(current.failure_context),
   });
+  const renderedLifecycleCard = renderStartupLifecycleCard({ lifecycleCard });
+  const preExecutionPreviewCard = command.kind === 'execution_request' && allowsPreExecutionPreview({
+    gateState: current.gate_state ?? issue.gate_state ?? null,
+    issueStatus: issue.status ?? current.status ?? null,
+  })
+    ? buildPreExecutionPreviewCardFields({ activeIssue, issue, issueText })
+    : undefined;
+  const renderedPreExecutionPreviewCard = preExecutionPreviewCard
+    ? renderPreExecutionPreviewCard({ previewCard: preExecutionPreviewCard })
+    : undefined;
+  const executionAllowed = allowsPreExecutionPreview({
+    gateState: current.gate_state ?? issue.gate_state ?? null,
+    issueStatus: issue.status ?? current.status ?? null,
+  });
+  const executionReasoningChecklist = executionAllowed ? buildExecutionReasoningChecklist({
+    command,
+    activeIssue,
+    gateState: current.gate_state ?? issue.gate_state ?? null,
+    issueStatus: issue.status ?? current.status ?? null,
+    issue,
+  }) : undefined;
+  const renderedExecutionReasoningChecklist = executionReasoningChecklist
+    ? renderExecutionReasoningChecklistCard({ checklist: executionReasoningChecklist })
+    : undefined;
+  let postRunnerExecutionLock = null;
+  let skillExecutionCheckpoint = null;
+  // POK-198 — AC1: capture real wall-clock start at execution-approval (chokepoint).
+  // Guard: only on execution_request AND when there is a valid active issue.
+  // Try/catch so a marker write failure never breaks the preview card output.
+  if (command.kind === 'execution_request' && executionAllowed && isIssueId(activeIssue)) {
+    try {
+      await recordIssueStartMarker({
+        root,
+        date: todayUtcDateRunner(),
+        issueId: activeIssue,
+        nowMs: Date.now(),
+      });
+    } catch {
+      // Intentionally silent — marker write failure must not break startup card.
+    }
+    // POK-207 (AC1, layer ②) — the RUNNER emits the issue_execution_entered receipt
+    // so the Workflow Trace "Skill invocation: pokit-issue" claim is backed by proof
+    // that the execution flow actually ran, not self-claimed prose. All-runtime floor.
+    try {
+      await appendIssueExecutionEnteredReceipt(root, {
+        issueId: activeIssue,
+        provider: detectProvider(),
+      });
+    } catch {
+      // Intentionally silent — receipt write failure must not break startup card.
+    }
+    try {
+      skillExecutionCheckpoint = await appendSkillExecutionCheckpointReceipt(root, {
+        issueId: activeIssue,
+        selectedSkill: 'pokit.issue',
+        step: 'pre_runner',
+        provider: detectProvider(),
+        payload: {
+          command: command.raw,
+          gate_state: current.gate_state ?? issue.gate_state ?? null,
+          issue_status: issue.status ?? current.status ?? null,
+        },
+      });
+    } catch {
+      // Intentionally silent — preview remains available; doctor catches missing chain before gate.
+    }
+  }
 
-  return {
-    status: doctorResult.status,
+  if (
+    command.kind === 'execution_mode_selection' &&
+    command.mode !== 'stop' &&
+    executionAllowed &&
+    isIssueId(activeIssue)
+  ) {
+    try {
+      await recordIssueStartMarker({
+        root,
+        date: todayUtcDateRunner(),
+        issueId: activeIssue,
+        nowMs: Date.now(),
+      });
+    } catch {
+      // Intentionally silent — gate metrics/doctor surface missing markers later.
+    }
+    const postRunnerPlanPayload = buildPostRunnerPlanPayload({
+      command,
+      activeIssue,
+      issue,
+    });
+    validatePostRunnerPlanPayload(postRunnerPlanPayload);
+    const issueLock = await acquireIssueLock(root, {
+      issueId: activeIssue,
+      holder: process.env.POKIT_SESSION_ID ?? `runner-${process.pid}`,
+      reason: `execute ${activeIssue}`,
+    });
+    if (!issueLock.acquired) {
+      throw new Error(issueLock.message);
+    }
+    postRunnerExecutionLock = await appendPostRunnerExecutionLockReceipt(root, {
+      issueId: activeIssue,
+      provider: detectProvider(),
+      mode: command.mode,
+      workerAuthorization: command.worker_authorization,
+      selectedOption: command.selected_option,
+    });
+    if (!postRunnerExecutionLock) {
+      throw new Error(`post_runner_execution_lock was not recorded for ${activeIssue}`);
+    }
+    skillExecutionCheckpoint = await appendSkillExecutionCheckpointReceipt(root, {
+      issueId: activeIssue,
+      selectedSkill: 'pokit.issue',
+      step: 'post_runner_plan',
+      provider: detectProvider(),
+      payload: postRunnerPlanPayload,
+    });
+    if (!skillExecutionCheckpoint) {
+      throw new Error(`skill_execution_checkpoint post_runner_plan was not recorded for ${activeIssue}`);
+    }
+  }
+
+  let backlogCard = null;
+  let renderedBacklogCard = undefined;
+  if (command.kind === 'backlog_view') {
+    try {
+      backlogCard = await buildGroupedBacklog(root, {
+        sprint: current.active_sprint ?? null,
+      });
+      renderedBacklogCard = renderGroupedBacklogCard(backlogCard);
+    } catch {
+      // Never break the runner on a backlog view failure.
+      backlogCard = null;
+      renderedBacklogCard = undefined;
+    }
+  }
+
+  const result = {
+    status,
     phraseMatched: matchesPokitPhrase(phrase),
     command,
     activeIssue,
     issuePath,
     runnerAssignment,
+    verificationIntensity,
     lifecycleCard,
-    doctor: {
-      summary: doctorResult.summary,
-      items: doctorResult.items,
-    },
-    counts: doctorResult.summary,
-    warnings,
-    failures,
+    renderedLifecycleCard,
+    preExecutionPreviewCard,
+    renderedPreExecutionPreviewCard,
+    executionReasoningChecklist,
+    renderedExecutionReasoningChecklist,
+    postRunnerExecutionLock,
+    skillExecutionCheckpoint,
+    sessionGuidanceCard,
+    renderedSessionGuidanceCard,
+    backlogCard,
+    renderedBacklogCard,
     nextAction,
   };
+  if (injectedSessionId) {
+    delete process.env.POKIT_SESSION_ID;
+  } else if (previousSessionId !== undefined) {
+    process.env.POKIT_SESSION_ID = previousSessionId;
+  }
+  return result;
+}
+
+function allowsPreExecutionPreview({ gateState = null, issueStatus = null } = {}) {
+  return ['pending', 'in_progress'].includes(gateState) ||
+    (gateState == null && ['pending', 'in_progress'].includes(issueStatus));
 }
 
 export function resolveRunnerAssignment(issueFrontmatter = {}) {
   const assignment = ASSIGNMENT_BY_AGENT_PROFILE[issueFrontmatter.agent_profile] ?? DEFAULT_ASSIGNMENT;
+  const dispatch = issueFrontmatter.agent_profile
+    ? resolveAgentProfileDispatch(issueFrontmatter.agent_profile)
+    : { permission_level: DEFAULT_ASSIGNMENT.permission_level };
+
   return {
     ...assignment,
-    main_agent_required_actions: [
-      'validate_scope',
-      'approve_or_apply_outputs',
-      'verify_before_gate_claim',
-    ],
+    permission_level: dispatch.permission_level,
+    main_agent_required_actions: [...MAIN_AGENT_REQUIRED_ACTIONS],
   };
 }
 
@@ -489,10 +677,21 @@ export function buildStartupLifecycleCardFields({
   activeIssue = null,
   status = null,
   project = null,
+  sprint = null,
   gateState = null,
   issueStatus = null,
   nextAction = null,
+  candidateQueue = [],
+  candidateCount = null,
+  contextBudget = null,
+  failureContext = null,
 } = {}) {
+  // POK-327 — 실패 기록이 현재 이슈의 것일 때만 시작 카드에 안내한다
+  // (전환 뒤 남은 다른 이슈의 기록으로 오안내하지 않음).
+  const failureNotice = failureContext && failureContext.issue === activeIssue
+    ? buildFailureNoticeFields(failureContext)
+    : null;
+  const inputWaiting = buildStartupInputWaiting(gateState, candidateQueue[0], failureNotice);
   return {
     card_type: 'session_start',
     title: '🚀 POKit2 세션 시작',
@@ -510,15 +709,18 @@ export function buildStartupLifecycleCardFields({
       access: ['timestamp', 'mode'],
       current: {
         project,
+        sprint: plainifyUserText(formatSprintLine(sprint, candidateCount)),
         issue: activeIssue,
-        state: [issueStatus, gateState ? `gate ${gateState}` : null].filter(Boolean).join(' / ') || status,
-        next: nextAction,
+        state: plainifyUserText(formatStartupState(gateState ?? status, issueStatus)),
+        recent_decision: plainifyUserText(formatRecentDecision(activeIssue, candidateQueue)),
+        next: plainifyUserText(nextAction),
       },
+      context: {
+        line: formatStartupContextLine(contextBudget),
+      },
+      ...(failureNotice ? { failure_notice: failureNotice } : {}),
       input_waiting: {
-        message: activeIssue
-          ? '"진행"이라고 말하면 시작합니다.'
-          : '먼저 node scripts/pokit-issue-create.mjs --title "첫 작업" 으로 첫 이슈를 만드세요.',
-        guard: '확인 전에는 이슈 생성, 파일 수정, 게이트 실행을 하지 않습니다.',
+        ...inputWaiting,
       },
     },
     boundaries: [
@@ -531,81 +733,32 @@ export function buildStartupLifecycleCardFields({
   };
 }
 
-// ── Blocking-draft card (D3) ─────────────────────────────────────────────────
-
-function buildBlockingDraftCardFields({ workSummary = '', draftCardText = '' } = {}) {
+function buildStartupInputWaiting(gateState, nextCandidate = null, failureNotice = null) {
+  // POK-327 — 실패 기록이 있으면 "이어서 재시도" 경로를 우선 안내한다 (완료 상태 제외).
+  if (failureNotice && gateState !== 'gate_passed') {
+    return {
+      message: failureNotice.resume_message,
+      guard: '애매하면 /pokit.clarify 로 AC/범위를 먼저 정리합니다. 확인 전에는 이슈 생성, 파일 수정, 게이트 실행을 하지 않습니다.',
+    };
+  }
+  if (gateState === 'gate_passed') {
+    const target = parseCandidateId(nextCandidate) ?? '다음 후보';
+    return {
+      message: `"진행해줘" → /pokit.next 로 ${target} 전환.`,
+      guard: '애매하면 /pokit.clarify 로 AC/범위를 먼저 정리합니다. 확인 전에는 이슈 생성, 파일 수정, 게이트 실행을 하지 않습니다.',
+    };
+  }
+  if (gateState === 'pending') {
+    return {
+      message: '"진행해줘" → /pokit.issue 로 현재 이슈 실행.',
+      guard: '애매하면 /pokit.clarify 로 AC/범위를 먼저 정리합니다. 확인 전에는 이슈 생성, 파일 수정, 게이트 실행을 하지 않습니다.',
+    };
+  }
   return {
-    card_type: 'blocking_draft',
-    display_only: true,
-    approval_required: true,
-    approves_durable_work: false,
-    block_message: '실행 전에 이슈를 먼저 묶어야 합니다.',
-    work_summary: workSummary,
-    draft_card_text: draftCardText,
+    message: '현재 상태가 애매하면 /pokit.clarify 로 먼저 정리합니다.',
+    guard: '확인 전에는 이슈 생성, 파일 수정, 게이트 실행을 하지 않습니다.',
   };
 }
-
-function renderBlockingDraftCard({ blockingCard = {} } = {}) {
-  const draftText = blockingCard.draft_card_text ?? '';
-  return draftText;
-}
-
-function buildNextTransitionRequiredCardFields({
-  activeIssue = null,
-  issue = {},
-  gateState = null,
-  command = {},
-} = {}) {
-  const passed = gateState === 'gate_passed';
-  return {
-    card_type: 'next_transition_required',
-    title: passed ? '⚠️ 다음 이슈 전환 필요' : '⚠️ pokit-next 실행 조건 미충족',
-    display_only: true,
-    approval_required: true,
-    approves_status_transition: false,
-    approves_release_scope_inclusion: false,
-    approves_durable_work: false,
-    approves_external_write: false,
-    approves_gate_pass: false,
-    fields: {
-      current: {
-        issue: activeIssue ?? issue.id ?? null,
-        title: issue.title ?? null,
-        gate_state: gateState,
-      },
-      request: command.raw ?? command.command ?? null,
-      message: passed
-        ? '완료된 이슈에는 pokit.issue 실행 preview나 b 실행 모드를 다시 열지 않습니다.'
-        : '현재 이슈가 gate_passed가 아니라서 pokit-next로 전환할 수 없습니다.',
-      next_step: passed
-        ? '다음 이슈를 선택한 뒤 node scripts/pokit-issue-use.mjs <ISSUE-ID>로 전환하세요.'
-        : '현재 이슈를 먼저 완료하거나 /pokit.issue 실행 preview로 돌아가세요.',
-    },
-  };
-}
-
-function renderNextTransitionRequiredCard({ nextCard = {} } = {}) {
-  const fields = nextCard.fields ?? {};
-  const current = fields.current ?? {};
-  return stripRightSideBorders([
-    `╭─ ${nextCard.title ?? '⚠️ 다음 이슈 전환 필요'}`,
-    '│',
-    '│ 현재',
-    `│   이슈      ${valueOrFallback(current.issue)}`,
-    `│   제목      ${valueOrFallback(current.title)}`,
-    `│   게이트    ${valueOrFallback(current.gate_state)}`,
-    '│',
-    '│ 라우팅',
-    `│   요청      ${valueOrFallback(fields.request)}`,
-    `│   판단      ${valueOrFallback(fields.message)}`,
-    '│',
-    '├─ 다음',
-    `│   pokit-next: ${valueOrFallback(fields.next_step)}`,
-    '╰─',
-  ].join('\n'));
-}
-
-// ── Pre-execution preview card (D6, ported from dev runner lines 690-737) ────
 
 export function buildPreExecutionPreviewCardFields({
   activeIssue = null,
@@ -629,13 +782,18 @@ export function buildPreExecutionPreviewCardFields({
       },
       preview: {
         purpose: extractPoSummaryLine(issueText, '왜 하는가')
-          ?? issue.goal
           ?? firstBriefSentence(issueText)
-          ?? '현재 이슈의 목적과 완료 기준을 확인한 뒤 실행을 시작한다.',
-        user_improvement: extractPoSummaryLine(issueText, '끝나면 뭐가 달라지는가')
-          ?? '사용자는 실행 전에 자동/수동 실행을 고를 수 있다.',
-        before: firstBriefSentence(issueText)
-          ?? '진행 요청 이후 실행 절차와 증거 기준이 흐려질 수 있다.',
+          ?? koreanPoLine(
+            issue.goal,
+            '현재 이슈의 목적과 완료 기준을 확인한 뒤 실행을 시작한다.'
+          ),
+        user_improvement: extractPoSummaryLine(issueText, '끝나면 뭐가 달라지는가') ?? defaultUserImprovement(),
+        before: koreanPoLine(
+          firstBriefSentence(issueText),
+          null,
+          null,
+          '진행 요청 이후 실행 절차와 증거 기준이 흐려질 수 있다.'
+        ),
         after: '선택 이후 /pokit.issue Step 1 사전 확인으로 진입한다.',
       },
       input_waiting: {
@@ -651,35 +809,7 @@ export function buildPreExecutionPreviewCardFields({
   };
 }
 
-// Inline renderer — ported from scripts/lib/lifecycle-card-renderer.mjs lines 47-70.
-function renderPreExecutionPreviewCard({ previewCard = {} } = {}) {
-  const current = previewCard.fields?.current ?? {};
-  const preview = previewCard.fields?.preview ?? {};
-  const inputWaiting = previewCard.fields?.input_waiting ?? {};
-
-  return stripRightSideBorders([
-    '╭─ ⚠️ POKit2 실행 전 확인',
-    '│',
-    '│ 이슈',
-    `│   번호      ${valueOrFallback(current.issue)}`,
-    `│   제목      ${valueOrFallback(current.title)}`,
-    '│',
-    '│ 미리보기',
-    `│   목적      ${valueOrFallback(preview.purpose)}`,
-    `│   사용자 개선 ${valueOrFallback(preview.user_improvement)}`,
-    `│   이전 문제 ${valueOrFallback(preview.before)}`,
-    `│   이후 해결 ${valueOrFallback(preview.after)}`,
-    '│',
-    '├─ 선택',
-    `│   ${valueOrFallback(inputWaiting.message, 'a) 수동  b) 자동  c) 중단')}`,
-    `│   ${valueOrFallback(inputWaiting.guard, '선택 전에는 파일 수정, 게이트 통과, 외부 쓰기를 하지 않습니다.')}`,
-    '╰─',
-  ].join('\n'));
-}
-
-// ── Execution reasoning checklist card (D6, ported from dev runner 739-776) ──
-
-function buildExecutionReasoningChecklistFields({
+function buildExecutionReasoningChecklist({
   command,
   activeIssue = null,
   gateState = null,
@@ -688,8 +818,7 @@ function buildExecutionReasoningChecklistFields({
 } = {}) {
   if (command?.kind !== 'execution_mode_selection' || command.mode === 'stop') return undefined;
 
-  const workerTasksNeed = issue.worker_tasks
-    ?? (Number(issue.produces?.length ?? 0) >= 3 ? 'recommended' : 'evaluate-before-dispatch');
+  const workerTasksNeed = issue.worker_tasks ?? (Number(issue.produces?.length ?? 0) >= 3 ? 'recommended' : 'evaluate-before-dispatch');
   const fallbackReason = command.worker_authorization === 'authorized'
     ? '해당 없음'
     : '워커 권한 필요';
@@ -709,6 +838,9 @@ function buildExecutionReasoningChecklistFields({
       worker_tasks_need: workerTasksNeed,
       worker_availability: command.worker_authorization === 'authorized' ? 'dispatch_allowed' : 'not_authorized',
       fallback_reason: fallbackReason,
+      // POK-247 (AC1/AC5/AC6) — the runner classifies the upcoming steps as 🟢 auto vs
+      // 🔴 human-confirm and publishes the plan on the card; the skill/main acts on it.
+      safe_step_plan: buildSafeStepPlan(),
       post_change_review_plan: 'review_worker 실행 또는 narrow skip 사유 기록',
       verification_plan: 'focused tests, doctor, and risk-appropriate suite before gate',
       next_step: '/pokit.issue Step 1 Pre-verification',
@@ -716,152 +848,120 @@ function buildExecutionReasoningChecklistFields({
   };
 }
 
-// Inline renderer — ported from scripts/lib/lifecycle-card-renderer.mjs lines 72-109.
-// Note: safe_step_plan is a dev-only feature; starter omits it (Type C boundary).
-function renderExecutionReasoningChecklistCard({ checklist = {} } = {}) {
-  const fields = checklist.fields ?? {};
+export function buildPostRunnerPlanPayload({
+  command,
+  activeIssue = null,
+  issue = {},
+} = {}) {
+  const workerTasksNeed = issue.worker_tasks ?? (Number(issue.produces?.length ?? 0) >= 3 ? 'recommended' : 'evaluate-before-dispatch');
+  const workerDecision = command?.worker_authorization === 'authorized' && workerTasksNeed !== 'not_required'
+    ? 'fan-out'
+    : 'fallback';
+  const fallbackReason = workerDecision === 'fallback'
+    ? resolvePostRunnerFallbackReason({ command, workerTasksNeed })
+    : undefined;
 
-  return stripRightSideBorders([
-    '╭─ 🧠 POKit2 실행 추론 체크',
-    '│',
-    '│ 승인',
-    `│   경로      ${valueOrFallback(fields.selected_skill)}`,
-    `│   이슈      ${valueOrFallback(fields.active_issue)}`,
-    `│   게이트    ${valueOrFallback(fields.gate_state)}`,
-    `│   승인 입력 ${valueOrFallback(fields.execution_approval)}`,
-    `│   모드      ${formatExecutionMode(fields.mode)}`,
-    '│',
-    '│ 작업 방식',
-    `│   워커 권한 ${formatWorkerAuthorization(fields.worker_authorization)}`,
-    `│   워커 판단 ${formatWorkerAvailability(fields.worker_availability)}`,
-    `│   fallback ${valueOrFallback(fields.fallback_reason)}`,
-    '│',
-    '├─ 실행 전 계획',
-    `│   리뷰      ${valueOrFallback(fields.post_change_review_plan)}`,
-    `│   검증      ${valueOrFallback(fields.verification_plan)}`,
-    `│   다음      ${valueOrFallback(fields.next_step)}`,
-    '╰─',
-  ].join('\n'));
+  const payload = {
+    selected_skill: 'pokit.issue',
+    selected_option: command?.selected_option,
+    mode: command?.mode,
+    worker_authorization: command?.worker_authorization,
+    active_issue: activeIssue,
+    worker_tasks_need: workerTasksNeed,
+    worker_decision: workerDecision,
+    post_change_review_plan: 'review_worker',
+    verification_plan: 'focused tests + doctor + risk-appropriate suite',
+  };
+  if (fallbackReason) payload.fallback_reason = fallbackReason;
+  return payload;
 }
 
-// ── Startup card renderer (unchanged from original) ──────────────────────────
-
-async function readIssueFrontmatter(root, issuePath) {
-  try {
-    return parseFrontmatter(await readFile(path.join(root, issuePath), 'utf8'));
-  } catch (error) {
-    if (error?.code === 'ENOENT') return {};
-    throw error;
-  }
+function resolvePostRunnerFallbackReason({ command, workerTasksNeed } = {}) {
+  if (workerTasksNeed === 'not_required') return 'trivial-scope';
+  if (command?.worker_authorization !== 'authorized') return 'worker-unavailable';
+  return 'cross-file-invariant';
 }
 
-function parseFrontmatter(text) {
-  const match = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return {};
-
-  const result = {};
-  let pendingKey = null;
-  for (const line of match[1].split('\n')) {
-    const keyValue = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (keyValue) {
-      pendingKey = keyValue[1];
-      result[pendingKey] = normalizeValue(keyValue[2]);
-      continue;
-    }
-
-    const listValue = line.match(/^\s*-\s*(.+)$/);
-    if (listValue && pendingKey) {
-      if (!Array.isArray(result[pendingKey])) result[pendingKey] = [];
-      result[pendingKey].push(normalizeValue(listValue[1]));
+export function validatePostRunnerPlanPayload(payload = {}) {
+  const required = [
+    'selected_skill',
+    'mode',
+    'worker_authorization',
+    'active_issue',
+    'worker_decision',
+    'post_change_review_plan',
+    'verification_plan',
+  ];
+  for (const field of required) {
+    if (payload[field] == null || payload[field] === '') {
+      throw new Error(`post_runner_plan payload missing ${field}`);
     }
   }
-
-  return result;
+  if (payload.selected_skill !== 'pokit.issue') {
+    throw new Error(`post_runner_plan payload selected_skill must be pokit.issue`);
+  }
+  if (!VALID_POST_RUNNER_WORKER_DECISIONS.has(payload.worker_decision)) {
+    throw new Error(`post_runner_plan payload worker_decision must be fan-out or fallback`);
+  }
+  if (payload.worker_decision === 'fallback') {
+    if (!payload.fallback_reason) {
+      throw new Error(`post_runner_plan payload fallback_reason is required when worker_decision is fallback`);
+    }
+    if (!VALID_POST_RUNNER_FALLBACK_REASONS.has(payload.fallback_reason)) {
+      throw new Error(`post_runner_plan payload fallback_reason is invalid: ${payload.fallback_reason}`);
+    }
+  }
+  return true;
 }
 
-function normalizeValue(value) {
-  const trimmed = value.trim();
-  if (trimmed === '') return true;
-  if (trimmed === 'null') return null;
-  return trimmed.replace(/^['"]|['"]$/g, '');
+function formatSprintLine(sprint, candidateCount) {
+  if (!sprint) return null;
+  if (Number.isInteger(candidateCount)) return `${sprint} (mid-sprint, candidates 잔여 ${candidateCount})`;
+  return sprint;
 }
 
-function formatPreflight(result) {
-  // Choose the appropriate rendered card based on what runPreflight returned.
-  const renderedLifecycleCard = result.renderedLifecycleCard
-    ?? renderStartupLifecycleCard(result.lifecycleCard);
-  return JSON.stringify({
-    status: result.status,
-    command: result.command,
-    activeIssue: result.activeIssue,
-    issuePath: result.issuePath,
-    runnerAssignment: result.runnerAssignment,
-    lifecycleCard: result.lifecycleCard,
-    renderedLifecycleCard,
-    summary: result.doctor?.summary ?? null,
-    nextAction: result.nextAction,
-  }, null, 2);
+function formatRecentDecision(activeIssue, candidateQueue = []) {
+  const next = candidateQueue.map(parseCandidateId).find((id) => id && id !== activeIssue);
+  if (activeIssue && next) return `${activeIssue} 먼저, ${next} 이후`;
+  return activeIssue ? `${activeIssue} 진행` : null;
 }
 
-function renderStartupLifecycleCard(lifecycleCard) {
-  const current = lifecycleCard?.fields?.current ?? {};
-  const input = lifecycleCard?.fields?.input_waiting ?? {};
-  return [
-    '╭─ 🚀 POKit2 세션 시작',
-    '│',
-    '│ 접속',
-    `│   모드    ${lifecycleCard?.mode ?? '상태 확인'}`,
-    '│',
-    '│ 현재 진행',
-    `│   프로젝트  ${current.project ?? 'unknown'}`,
-    `│   이슈      ${current.issue ?? 'none'}`,
-    `│   상태      ${current.state ?? 'unknown'}`,
-    `│   다음      ${current.next ?? '-'}`,
-    '│',
-    '├─ 입력 대기',
-    `│   ${input.message ?? '-'}`,
-    `│   ${input.guard ?? '-'}`,
-    '╰─',
-  ].join('\n');
+function formatStartupState(gateState, issueStatus) {
+  const parts = [];
+  if (gateState) parts.push(`gate_state: ${gateState}`);
+  if (issueStatus) parts.push(`status: ${issueStatus}`);
+  return parts.join(' / ') || null;
 }
 
-// ── Shared render helpers ─────────────────────────────────────────────────────
-
-const RIGHT_SIDE_BORDERS = /[┐┤┘]/g;
-
-function stripRightSideBorders(value) {
-  return value.replace(RIGHT_SIDE_BORDERS, '');
+function formatStartupContextLine(contextBudget) {
+  if (!contextBudget) return null;
+  const startup = Number(contextBudget.startup_token_count) || 0;
+  const expectedWork = Number(contextBudget.work_read_token_count) || 0;
+  return `시작 ${formatTokenK(startup)} / 작업 0 / 예상 +${formatTokenK(expectedWork)}`;
 }
 
-function valueOrFallback(value, fallback = '-') {
-  if (value === null || value === undefined || value === '') return fallback;
-  return String(value);
+function formatTokenK(value) {
+  return `${(value / 1000).toFixed(1)}k`;
 }
 
-function formatExecutionMode(value) {
-  if (value === 'automatic') return '자동';
-  if (value === 'manual-confirm') return '수동 확인';
-  return valueOrFallback(value);
+function parseCandidateId(candidate) {
+  return extractIssueId(candidate);
 }
-
-function formatWorkerAuthorization(value) {
-  if (value === 'authorized') return '허용됨';
-  if (value === 'not_required') return '필요 없음';
-  return valueOrFallback(value);
-}
-
-function formatWorkerAvailability(value) {
-  if (value === 'dispatch_allowed') return 'fan-out 가능';
-  if (value === 'not_authorized') return '권한 없음';
-  return valueOrFallback(value);
-}
-
-// ── Issue text helpers (for preview card field extraction) ───────────────────
 
 function extractPoSummaryLine(text, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`^- \\*\\*${escaped}\\*\\*:\\s*(.+)$`, 'm');
   return text.match(pattern)?.[1]?.trim() ?? null;
+}
+
+function koreanPoLine(...candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    if (/[가-힣]/.test(trimmed)) return trimmed;
+  }
+  return candidates.find((candidate) => typeof candidate === 'string' && candidate.trim())?.trim() ?? '';
 }
 
 function firstBriefSentence(text) {
@@ -874,14 +974,255 @@ function firstMarkdownHeading(text) {
   return text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
 }
 
-// ── CLI entry ─────────────────────────────────────────────────────────────────
+function defaultUserImprovement() {
+  return '사용자는 실행 전에 자동/수동 실행을 고를 수 있다.';
+}
+
+// POK-141 — parseFrontmatterTimestamp and deriveIssueDurationFromCard have
+// been moved to ./lib/issue-duration.mjs (POK-196). They are re-exported above
+// to preserve the existing export surface.
+
+function todayUtcDateRunner() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function readIssueFrontmatter(root, issuePath) {
+  try {
+    return parseFrontmatter(await readIssueText(root, issuePath));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return {};
+    throw error;
+  }
+}
+
+async function readIssueText(root, issuePath) {
+  return readFile(path.join(root, issuePath), 'utf8');
+}
+
+async function readOptionalIssueText(root, issuePath) {
+  try {
+    return await readIssueText(root, issuePath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return '';
+    throw error;
+  }
+}
+
+// POK-202: read a card's gate_state without trusting release-scope.yaml status cache.
+// Returns the gate_state string (e.g. 'gate_passed', 'pending') or null if unknown/missing.
+async function readCardGateState(root, issueId) {
+  try {
+    const cardPath = await resolveActiveIssuePath(root, issueId);
+    if (!cardPath) return null;
+    const text = await readOptionalIssueText(root, cardPath);
+    if (!text) return null;
+    const fm = parseFrontmatter(text);
+    return fm.gate_state ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function readReleaseScope(root, sprint) {
+  if (!sprint) return { candidateQueue: [], candidateCount: null };
+  try {
+    const text = await readFile(path.join(root, '.ai-os/sprints', sprint, 'release-scope.yaml'), 'utf8');
+    // POK-202: an entry is a live candidate iff it has a lifecycle status (status != null,
+    // which excludes deferred/reason-only entries) AND its card's gate_state !== 'gate_passed'.
+    // The yaml status VALUE is no longer trusted to decide done-ness — the CARD decides.
+    const allEntries = parseAcceptedCandidates(text).filter((e) => e.status != null);
+    const entriesWithState = await Promise.all(
+      allEntries.map(async (entry) => ({
+        entry,
+        gateState: await readCardGateState(root, entry.id),
+      }))
+    );
+    let entries = entriesWithState
+      .filter(({ gateState }) => gateState !== 'gate_passed')
+      .map(({ entry }) => entry);
+    if (entries.length === 0) entries = parseCandidateDecisionGateEntries(text);
+    const claimMap = await readClaimMap(root);
+    const withClaims = entries.map((entry) => ({
+      ...entry,
+      claim: claimMap.get(entry.id) ?? null,
+    }));
+    const orderedEntries = [
+      ...withClaims.filter((entry) => !entry.claim),
+      ...withClaims.filter((entry) => entry.claim),
+    ];
+    return {
+      candidateQueue: orderedEntries.map((entry, index) => formatCandidateQueueLine(entry, index)),
+      candidateCount: orderedEntries.length,
+    };
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { candidateQueue: [], candidateCount: null };
+    throw error;
+  }
+}
+
+async function readClaimMap(root) {
+  try {
+    const claims = await listActiveIssueClaims(root);
+    const map = new Map();
+    for (const claim of claims) {
+      if (!map.has(claim.issue_id)) map.set(claim.issue_id, claim);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+function formatCandidateQueueLine(entry, index) {
+  const suffix = entry.claim ? ' — 다른 세션 진행 중/점유' : '';
+  return `${index + 1}) ${entry.id} — ${entry.title}${suffix}`;
+}
+
+function parseAcceptedCandidates(text) {
+  const accepted = text.match(/(?:^|\n)accepted:\n([\s\S]*?)(?=\n(?:triage|out_of_scope|gate_conditions):|$)/)?.[1] ?? '';
+  const chunks = accepted.split(/\n\s*-\s+id:\s*/).slice(1);
+  return chunks.map((chunk) => {
+    const id = chunk.match(/^([A-Z]+-\d{3})/)?.[1] ?? null;
+    const title = chunk.match(/\n\s+title:\s*"?([^"\n]+)"?/)?.[1] ?? null;
+    const status = chunk.match(/\n\s+status:\s*([A-Za-z0-9_-]+)/)?.[1] ?? null;
+    return { id, title, status };
+  }).filter((entry) => entry.id);
+}
+
+function parseCandidateDecisionGateEntries(text) {
+  const gateBlock = text.match(/(?:^|\n)candidate_decision_gate:\n([\s\S]*?)(?=\n(?:deferred|retro_action_mapping|gate_conditions):|$)/)?.[1] ?? '';
+  const decideBlock = gateBlock.match(/(?:^|\n)\s+decide:\n([\s\S]*?)(?=\n\s+[A-Za-z0-9_-]+:|\n[A-Za-z0-9_-]+:|$)/)?.[1] ?? '';
+  const ids = Array.from(
+    decideBlock.matchAll(new RegExp(`^\\s*-\\s+(${ISSUE_ID_SOURCE})\\s*$`, 'gim')),
+    (match) => assertIssueId(match[1])
+  );
+  if (ids.length === 0) return [];
+
+  const titleById = new Map();
+  for (const entry of parseScopedIssueList(text, 'candidates')) titleById.set(entry.id, entry.title);
+  for (const entry of parseScopedIssueList(text, 'accepted')) titleById.set(entry.id, entry.title);
+
+  return ids.map((id) => ({
+    id,
+    title: titleById.get(id) ?? 'candidate decision gate',
+    status: 'candidate_decision',
+  }));
+}
+
+function parseScopedIssueList(text, sectionName) {
+  const body = text.match(new RegExp(`(?:^|\\n)${sectionName}:\\n([\\s\\S]*?)(?=\\n[A-Za-z0-9_-]+:|$)`))?.[1] ?? '';
+  const chunks = body.split(/\n\s*-\s+id:\s*/).slice(1);
+  return chunks.map((chunk) => {
+    const id = chunk.match(/^([A-Z]+-\d{3})/)?.[1] ?? null;
+    const title = chunk.match(/\n\s+title:\s*"?([^"\n]+)"?/)?.[1] ?? null;
+    return { id, title };
+  }).filter((entry) => entry.id);
+}
+
+// parseFrontmatter imported from ./lib/issue-frontmatter.mjs (POK-339)
+
+// POK-271 — buildCompleteCardFields and runCompleteCommand have been moved to
+// ./lib/complete-card.mjs (POK-307). They are re-exported above to preserve
+// the existing export surface.
+
+function formatPreflight(result) {
+  return JSON.stringify({
+    status: result.status,
+    command: result.command,
+    activeIssue: result.activeIssue,
+    issuePath: result.issuePath,
+    runnerAssignment: result.runnerAssignment,
+    verification_intensity: result.verificationIntensity,
+    lifecycleCard: result.lifecycleCard,
+    renderedLifecycleCard: result.renderedLifecycleCard,
+    preExecutionPreviewCard: result.preExecutionPreviewCard,
+    renderedPreExecutionPreviewCard: result.renderedPreExecutionPreviewCard,
+    executionReasoningChecklist: result.executionReasoningChecklist,
+    renderedExecutionReasoningChecklist: result.renderedExecutionReasoningChecklist,
+    postRunnerExecutionLock: result.postRunnerExecutionLock,
+    sessionGuidanceCard: result.sessionGuidanceCard,
+    renderedSessionGuidanceCard: result.renderedSessionGuidanceCard,
+    backlogCard: result.backlogCard,
+    renderedBacklogCard: result.renderedBacklogCard,
+    nextAction: result.nextAction,
+  }, null, 2);
+}
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 const modulePath = fileURLToPath(import.meta.url);
 
 if (invokedPath === modulePath) {
-  const phrase = process.argv.slice(2).join(' ') || '$pokit';
-  const result = await runPreflight({ root: process.cwd(), phrase });
-  console.log(formatPreflight(result));
-  process.exitCode = result.status === 'fail' ? 1 : 0;
+  const args = process.argv.slice(2);
+  if (args[0] === 'metrics') {
+    // POK-206 — INTENTIONAL asymmetry: the low-level `metrics` subcommand records
+    // exactly what is passed (explicit flags / card-derive) and does NOT apply the
+    // gate-pass idempotent freeze or marker read. `gate-pass` is the issue-completion
+    // chokepoint that owns marker/freeze; `metrics` is a manual tool. It still honors
+    // --dry-run (parsed into options) for a non-destructive preview.
+    const result = await recordIssueCompletionMetrics({
+      root: process.cwd(),
+      ...parseMetricsArgs(args),
+    });
+    console.log(JSON.stringify(result, null, 2));
+  } else if (args[0] === 'gate-pass') {
+    const result = await runGatePassCommand(args, { root: process.cwd(), date: todayUtcDateRunner() });
+    process.exitCode = result.ok ? 0 : 1;
+  } else if (args[0] === 'complete') {
+    // POK-271 (AC1) — runner-owned complete card output.
+    const result = await runCompleteCommand(args, { root: process.cwd() });
+    process.exitCode = result.ok ? 0 : 1;
+  } else if (args[0] === 'transition-status') {
+    // POK-325 — pokit-next transition chokepoint: sync the target issue card's
+    // frontmatter status so preflight does not block on a stale card.
+    const result = await runTransitionStatusCommand(args, { root: process.cwd() });
+    process.exitCode = result.ok ? 0 : 1;
+  } else if (args[0] === 'record-failure') {
+    // POK-327 — 검증 실패 기록 chokepoint: 단계·원인·시도 횟수를 current.md
+    // failure_context에 구조화 기록한다. 기록은 이 러너 명령으로만 발행한다.
+    const issueId = args[1];
+    let stage = 'other';
+    let reason = '';
+    for (let index = 2; index < args.length; index += 1) {
+      if (args[index] === '--stage' && args[index + 1] !== undefined) {
+        stage = args[index + 1];
+        index += 1;
+      } else if (args[index] === '--reason' && args[index + 1] !== undefined) {
+        reason = args[index + 1];
+        index += 1;
+      }
+    }
+    if (!isIssueId(issueId)) {
+      console.error(`error: record-failure requires issue id (got: ${issueId ?? '<missing>'})`);
+      process.exitCode = 1;
+    } else {
+      const result = await recordFailureContext({ root: process.cwd(), issueId, stage, reason });
+      console.log(JSON.stringify(result));
+      process.exitCode = result.ok ? 0 : 1;
+    }
+  } else if (args[0] === 'reissue-authored') {
+    // POK-325 — definition-change chokepoint: re-emit the issue_authored receipt
+    // after a title edit so doctor's content-hash check passes again.
+    const issueId = args[1];
+    let reason = 'definition_change_reissue';
+    for (let index = 2; index < args.length; index += 1) {
+      if (args[index] === '--reason' && args[index + 1] !== undefined) {
+        reason = args[index + 1];
+        index += 1;
+      }
+    }
+    try {
+      const cardPath = await resolveActiveIssuePath(process.cwd(), issueId);
+      const result = await reissueIssueAuthoredReceipt({ root: process.cwd(), cardPath, reason });
+      console.log(JSON.stringify(result));
+      process.exitCode = result.ok ? 0 : 1;
+    } catch (error) {
+      console.error(`error: reissue_authored_failed — ${error.message}`);
+      process.exitCode = 1;
+    }
+  } else {
+    const phrase = args.join(' ') || '$pokit';
+    const result = await runPreflight({ root: process.cwd(), phrase });
+    console.log(formatPreflight(result));
+    process.exitCode = result.status === 'fail' ? 1 : 0;
+  }
 }

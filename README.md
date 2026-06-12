@@ -15,23 +15,23 @@ request
   -> next issue
 ```
 
-POKit2 is not a hosted dashboard and it is not a package-registry install. It is shipped as an installable starter archive: unpack it into a fresh project, run the local starter scripts, and keep the resulting state inside that project. The public repository is a sanitized starter kit: it contains the method, harness, seed state, scripts, and setup surfaces needed to start a new project. It does not contain the development repository's real issues, specs, sprint memory, run logs, receipts, private links, or personal paths.
+POKit2 is published as the `pokit2` npm package ([npmjs.com/package/pokit2](https://www.npmjs.com/package/pokit2)). Install it with a single `npx` command. The package provides the `pokit` CLI and keeps the harness scripts, standards, and tests in one global location; your project keeps only a thin residue of state and agent-surface files.
 
 ## Quick Install
 
-### Option A. npx One-Line Installer (Recommended)
-
-The fastest way to install the v0.18.0 starter into a fresh project:
+### Recommended: npx one-liner
 
 ```bash
 mkdir my-project && cd my-project
-npx github:dongwonlee222/POKit2
+npx pokit2 install
 ```
 
-This installs all starter files into the current directory. If any file already exists, the installer stops without overwriting anything — use `--force` only when you intentionally want to overwrite. After install, run the doctor to confirm the setup:
+`npx pokit2 install` installs the thin project residue into the current directory. Pass `--yes` to skip the confirmation prompt, or `--root <dir>` to target a different directory. Running `pokit install` without `--yes` prints a preview and writes nothing; `npx pokit2` with no arguments prints the command list.
+
+After install, run the doctor to confirm the setup:
 
 ```bash
-node scripts/pokit-doctor.mjs
+pokit doctor
 ```
 
 Then open the project in Claude Code and start with:
@@ -40,99 +40,33 @@ Then open the project in Claude Code and start with:
 포킷 시작
 ```
 
-### Option B. Local v0.18 Starter Archive
-
-Use this when you have this repository locally and want to install the current v0.18 starter into a fresh project.
+### Global install
 
 ```bash
-mkdir my-project
-tar -xzf /path/to/pokit2/release/pokit-starter-v0.18.0.tar.gz -C my-project
-
-cd my-project
-node scripts/pokit-runner.mjs "포킷 시작"
-node scripts/pokit-doctor.mjs
-node --test tests/starter-smoke.test.mjs
+npm i -g pokit2
+pokit install
 ```
 
-Expected result:
+### Options
 
-```text
-runner: pass
-doctor: pass
-starter smoke: pass
-active project: common
-active issue: none yet
-```
+| Flag | Effect |
+|---|---|
+| (none) | Preview mode: shows what would be installed, writes nothing. |
+| `install` | Install the thin project residue into the current directory. |
+| `install --yes` | Skip confirmation prompt. |
+| `install --root <dir>` | Target a specific directory instead of `cwd`. |
 
-### Option C. GitHub Release Archive
+### Legacy v0.18 full-copy migration
 
-Use this after a v0.18 GitHub release has been explicitly published.
-
-```bash
-mkdir my-project
-cd my-project
-
-VERSION=v0.18.0
-curl -L -o pokit-starter.tar.gz \
-  "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
-
-tar -xzf pokit-starter.tar.gz
-node scripts/pokit-runner.mjs "포킷 시작"
-node scripts/pokit-doctor.mjs
-```
-
-As of the v0.18 release, the archive exists at `release/pokit-starter-v0.18.0.tar.gz` and is published through the public GitHub release after PO approval.
-
-### Option D. Clone The Public Starter
-
-Use this after the public repository has been updated to the desired release.
-
-```bash
-git clone https://github.com/dongwonlee222/POKit2.git my-project
-cd my-project
-node scripts/pokit-runner.mjs "포킷 시작"
-node scripts/pokit-doctor.mjs
-```
-
-### Option E. Manual Copy
-
-Use manual copy only when you understand the starter boundary.
-
-Copy the public starter files into your project, then run:
-
-```bash
-node scripts/pokit-runner.mjs "포킷 시작"
-node scripts/pokit-doctor.mjs
-```
-
-Do not copy a development repository's live `.ai-os` directory into a new project. That would copy someone else's issues, memory, run logs, and gate history.
-
-### Optional Local CLI Link
-
-If you are working from a source checkout and want the `pokit` command locally, link the package from the repository root:
-
-```bash
-npm link
-pokit doctor
-```
-
-This is local-only convenience. It is not an npm package-registry publish.
+If your project was set up with a full-copy starter (v0.18 or earlier), running `pokit install` automatically detects the legacy layout and migrates it: legacy harness body files are removed, and your user state (`.ai-os`) is preserved in place. No manual file surgery required.
 
 ## Runtime Setup
 
-The starter includes repo entrypoints for agent runtimes:
+After install, your project contains the runtime entrypoint `AGENTS.md` (with a tool-owned marker block) and the POKit skill surfaces under `.claude/skills`.
 
-```text
-AGENTS.md
-CLAUDE.md
-ANTIGRAVITY.md
-```
+`.claude/skills` is Claude Code's repo-local skill surface. It is present because Claude Code can discover it directly from the project. Other runtime entrypoint files (such as `CLAUDE.md` or `ANTIGRAVITY.md`) are not created by `pokit install`; add them yourself if your runtime needs a bridge file pointing at `AGENTS.md`.
 
-It also includes the POKit skill surfaces under `.claude/skills` and `.claude/commands`.
-
-`.claude/commands` and `.claude/skills` are Claude Code's repo-local command and skill surfaces. They are present because Claude Code can discover them directly from the project.
-
-For Codex, install the skills into your Codex skill directory:
+For Codex, install the skills into your Codex skill directory. The source path is your installed project's `.claude/skills`:
 
 ```bash
 mkdir -p ~/.codex/skills
@@ -148,9 +82,9 @@ cp -R .claude/skills/pokit-* "$CODEX_HOME/skills/"
 
 Then restart Codex or open a fresh session from the project root.
 
-For Claude Code, keep `.claude/commands` and `.claude/skills` in the repository and open Claude Code from the project root.
+For Claude Code, keep `.claude/skills` in the repository and open Claude Code from the project root.
 
-For Antigravity, use `ANTIGRAVITY.md` as the entrypoint. Do not assume native POKit skill discovery there until you have runtime-specific proof.
+For Antigravity, create an `ANTIGRAVITY.md` bridge pointing at `AGENTS.md`. Do not assume native POKit skill discovery there until you have runtime-specific proof.
 
 Runtime support should be claimed only after real discovery, trigger, and execution proof. Skill files are setup surfaces; gate completion still requires fresh verification evidence.
 
@@ -180,20 +114,20 @@ New to POKit? Start with the beginner onboarding docs:
 The starter begins with the default `common` project and `COM` namespace. Create your first issue without choosing an ID:
 
 ```bash
-node scripts/pokit-issue-create.mjs --title "첫 작업"
-node scripts/pokit-list-issues.mjs
-node scripts/pokit-issue-use.mjs COM-001
-node scripts/pokit-doctor.mjs
+pokit issue:create --title "첫 작업"
+pokit issues
+pokit doctor
 ```
+
+Selecting and advancing the active issue is owned by the agent workflow: open the project in your agent runtime, start with `포킷 시작`, and let the POKit skills manage `.ai-os/current.md`.
 
 To use your own project and issue counter:
 
 ```bash
-node scripts/pokit-project-create.mjs --key my-project --name "My Project" --namespace MYP
-node scripts/pokit-project-use.mjs my-project
-node scripts/pokit-issue-create.mjs --title "첫 작업"
-node scripts/pokit-issue-use.mjs MYP-001
-node scripts/pokit-doctor.mjs
+pokit project:init --key my-project --name "My Project" --prefix MYP
+pokit project:use --project my-project
+pokit issue:create --title "첫 작업"
+pokit doctor
 ```
 
 Manual `--id` remains available as an explicit override, but the beginner flow should let the active project choose the next issue number.
@@ -209,8 +143,6 @@ From there, the normal work loop is:
   -> move to the next issue
 ```
 
-The source repository also has a richer local `pokit` package surface for development and smoke testing. The public starter archive intentionally ships standalone starter scripts first; package-registry publishing remains out of scope until separately approved.
-
 ## Concept Quick Map
 
 | Concept | What it means for a user |
@@ -224,7 +156,7 @@ The source repository also has a richer local `pokit` package surface for develo
 | Push confirmation | POKit does not automatically publish or push. External writes, tags, GitHub releases, and package publishing need explicit PO approval. |
 | Session guidance card | After startup or at each step, the runner prints a guidance card (work / integration / status) showing where you are and what to do next. Cards are display-only; they do not approve transitions. |
 | Safe-step automation (🟢/🔴) | Reversible, evidence-leaving steps (code change, verify, commit) proceed automatically 🟢. Risky or external steps (push, gate pass) always require your explicit approval 🔴. Push always needs PO confirmation. |
-| Starter safety floor | The starter now ships an active-issue guard: if you try to make a durable file change without an active issue, the action is blocked and a draft issue card is offered automatically. Works with any issue-id prefix, not just `COM-`. Installed via `install-safety-floor-settings.mjs` using non-destructive merge. |
+| Engine guard floor | The engine ships chokepoint guards: auto-numbered issue creation is allowed only in a fresh project (no active issue yet), and `pokit install` refuses to run inside a POKit2 source checkout. Agent-runtime hook wiring for thin projects is tracked as follow-up work. |
 | Targeted preflight | Issue execution now checks the active issue shape before worker fan-out, so malformed Worker Tasks or missing execution sections fail early. |
 | Automation MVP | Local automations can be registered, previewed, dry-run once with a receipt, and disabled. Fully unattended schedules and release/push actions remain out of scope. |
 | Config/state boundary | Project config, local secrets, user defaults, project state, and issue numbering are separated so automation and scripts do not treat state files as config. |
@@ -290,80 +222,91 @@ memory + handoff
 
 ## File Structure and Architecture
 
+After `pokit install`, three items remain in your project. Everything else lives in the global `pokit2` package.
+
 ```text
-project/
-|-- AGENTS.md
-|-- CLAUDE.md
-|-- ANTIGRAVITY.md
-|-- README.md
-|-- ARCHITECTURE.md
-|-- RELEASE.md
-|-- pokit.config.yaml
-|
+your-project/               <- user project (thin residue)
+|-- AGENTS.md               <- runtime entrypoint (tool-owned: marker block)
 |-- .claude/
-|   |-- commands/
-|   |-- skills/
-|   `-- settings.json
-|
-|-- scripts/
-|   |-- pokit-runner.mjs
-|   |-- pokit-doctor.mjs
-|   |-- pokit-project-create.mjs
-|   |-- pokit-project-use.mjs
-|   |-- pokit-issue-create.mjs
-|   |-- pokit-issue-use.mjs
-|   |-- pokit-list-issues.mjs
-|   |-- pokit-list-evidence-raw.mjs
-|   |-- pokit-measure-startup.mjs
-|   |-- pokit-sprint-close.mjs
-|   |-- active-issue-guard.mjs
-|   |-- install-safety-floor-settings.mjs
-|   `-- hooks/
-|       |-- require-active-issue-before-mutation.mjs
-|       `-- session-start.mjs
-|
-|-- tests/
-|   |-- starter-smoke.test.mjs
-|   `-- pokit-doctor-binding.test.mjs
-|
-|-- projects/
-|   `-- <project>/
-|       `-- issues/
-|
-|-- docs/
-|   `-- <project>/
-|
-|-- artifacts/
-|   `-- <project>/
-|
-`-- .ai-os/
+|   `-- skills/             <- thin pokit skills (tool-owned)
+`-- .ai-os/                 <- all state (user-owned)
     |-- current.md
     |-- status-board.md
     |-- issue-index.md
     |-- artifact-index.md
     |-- memory/
     |-- sprints/
-    |-- standards/
     `-- projects.yaml
 ```
 
-Development repositories may use project-owned issue paths such as `projects/<project>/issues/POK-XXX.md`. The sanitized starter ships only empty scaffold markers for `projects/`, `docs/`, `artifacts/`, and `.ai-os/sprints/`; your real issues, documents, and outputs are created after installation.
+The `pokit2` global package holds the scripts and standards — one copy serves all your projects:
 
-The starter intentionally does not ship POKit2's full development `scripts/lib` or internal regression suite. It ships standalone user-facing CLI scripts only:
+```text
+<global npm prefix>/lib/node_modules/pokit2/
+|-- bin/pokit.mjs           <- CLI entry
+|-- scripts/                <- all harness scripts
+|-- starter/                <- install seeds
+`-- .ai-os/standards/       <- shared standards
+```
 
-| Command | User Purpose |
+**Ownership boundary:**
+
+| Item | Owner | `pokit update` behavior |
+|---|---|---|
+| `AGENTS.md` marker block (`<!-- pokit:begin -->` … `<!-- pokit:end -->`) | Tool | Regenerated |
+| `AGENTS.md` content outside the marker block | User | Never touched |
+| `.claude/skills/pokit-*` | Tool | Regenerated |
+| `.ai-os/` | User | Never touched |
+| `pokit_version` frontmatter | Tool | Synchronized |
+
+`pokit doctor` detects `pokit_version` drift between your project and the installed package version. If they diverge, doctor fails and prompts you to run `pokit update`.
+
+## CLI Commands
+
+All commands use the `pokit` binary installed by the `pokit2` package.
+
+### Everyday commands
+
+These five cover the normal user flow:
+
+| Command | Purpose |
 |---|---|
-| `node scripts/pokit-runner.mjs "포킷 시작"` | Restore current issue and lifecycle card. |
-| `node scripts/pokit-doctor.mjs` | Check state, structure, gate, and starter contract drift. |
-| `node scripts/pokit-project-create.mjs --key my-project --name "My Project" --namespace MYP` | Create a project with its own namespace, folders, and counter. |
-| `node scripts/pokit-project-use.mjs my-project` | Switch the active project. |
-| `node scripts/pokit-issue-create.mjs --title "..."` | Create the next issue in the active project and write a local runtime receipt. |
-| `node scripts/pokit-issue-use.mjs COM-001` | Make an issue active so runner and doctor use it. |
-| `node scripts/pokit-list-issues.mjs` | List local Harness Issues. |
-| `node scripts/pokit-list-evidence-raw.mjs` | Inspect local event/receipt evidence (raw dump). |
-| `node scripts/pokit-measure-startup.mjs` | Estimate startup/work-read token budget. |
-| `node scripts/pokit-sprint-close.mjs v0.1.0` | Archive handoff and create a retro template. |
-| `node --test tests/*.mjs` | Run the starter smoke test, not the private development regression suite. |
+| `pokit install` | Install the thin project residue or migrate a legacy full-copy install. |
+| `pokit doctor` | Run the local POKit doctor checks. |
+| `pokit update` | Refresh tool-owned files; never touches user-owned state. |
+| `pokit issue:create` | Create a local issue card. |
+| `pokit issues` | List issue cards from the local workspace. |
+
+### Agent and advanced commands
+
+Mostly invoked by the agent workflow or used for advanced setups — you rarely need to type these:
+
+| Command | Purpose |
+|---|---|
+| `pokit start` | Render the startup lifecycle card. |
+| `pokit runner` | Run the lifecycle runner. |
+| `pokit artifacts` | List artifact cards from the local workspace. |
+| `pokit evidence` | Preview or write the evidence index. |
+| `pokit project:init` | Initialize project-local .pokit state. |
+| `pokit project:use` | Switch the active project. |
+| `pokit project:list` | List configured local projects. |
+| `pokit project:overview` | Read the local multi-project overview. |
+| `pokit session` | Create/adopt/check task-session worktree flows. |
+| `pokit integration` | Review and integrate proposed task-session updates. |
+| `pokit worktree:gc` | Preview or apply safe task-session worktree cleanup. |
+| `pokit sprint-close` | Run the manual sprint-close command. |
+| `pokit sync` | Sync repo-local command/skill templates. |
+| `pokit dry-run` | Run the local scenario dry-run. |
+
+### `pokit install`
+
+Installs the thin project residue (`AGENTS.md`, `.claude/skills`, seed `.ai-os`) into the current directory. Pass `--yes` to skip confirmation, `--root <dir>` to target another directory.
+
+If the current directory contains a legacy v0.18 full-copy installation, `pokit install` detects it automatically and migrates: legacy harness body files are removed, and your `.ai-os` state is preserved.
+
+### `pokit update`
+
+Updates the global package and then regenerates all tool-owned files in your project (the `AGENTS.md` marker block, `.claude/skills/pokit-*`, and `pokit_version` frontmatter). User-owned content (`.ai-os`, text outside marker blocks) is never modified. If `pokit update` encounters an unknown `schema_version`, it stops and shows guidance rather than proceeding.
 
 ## Core Skills
 
@@ -428,6 +371,8 @@ POKit2 uses several verification layers because each layer catches a different c
 
 A Harness Issue is the unit of durable work.
 
+Issues are stored as Markdown files under `projects/<project>/issues/POK-XXX.md`.
+
 It usually records:
 
 - problem and goal
@@ -482,37 +427,35 @@ scope spec
 
 Release claims should be explicit. README refresh work does not create a release, tag, upload, package publish, or external deployment. Each release issue should include README freshness in its Acceptance Criteria or Gate section.
 
-## Sanitized Starter Boundary
+## Package Boundary
 
-Included:
+What the `pokit2` npm package contains:
 
-- public README and architecture docs
-- seed `.ai-os` state
-- core standards
-- default project registry with `common / COM`
-- runner and doctor scripts
-- required config
-- runtime skill setup surfaces
-- public scaffold folders for future project issues, docs, artifacts, and sprint state
+- `bin/pokit.mjs` — the `pokit` CLI
+- `scripts/` — all harness scripts and hooks
+- `.ai-os/standards/` and `.ai-os/templates/` — shared standards
+- `starter/` — install seeds (AGENTS.md marker source, thin skills, seed state)
+- `docs/onboarding/` — beginner docs
 
-Excluded:
+The regression test suite lives in the source repository, not in the published package.
 
-- real user-created issues
-- real specs and sprint/release work memory
-- current development handoff state
-- run metrics
-- preexisting event receipts from the development repository
-- private repo links
-- personal paths
-- secrets
-- local agent settings and development-only harness folders
+What `pokit install` places in your project (thin residue):
 
-After install, your own commands may create local runtime receipts under `.ai-os/events/`; those belong to your project and are not shipped from this development repository.
-- release/dist outputs
-- full POKit2 development `scripts/lib`
-- full internal regression `tests`
+- `AGENTS.md` — runtime entrypoint with a tool-owned marker block and user-owned body
+- `.claude/skills/pokit-*` — thin POKit skills for Claude Code
+- `.ai-os/` — seed state (current.md, status-board.md, projects.yaml, etc.)
 
-This repository is the starter surface, not the private development history.
+What stays in the development repository only (not in the published package or your project):
+
+- real development issues, specs, sprint memory, and handoff state
+- run metrics and event receipts from the development history
+- private repo links and personal paths
+- release/dist build outputs
+- internal development-only regression fixtures
+
+After install, your project's `.ai-os/events/` accumulates your own runtime receipts. Those belong to your project and are not shipped by the package.
+
+This public repository is the source for the `pokit2` package, not a container for private development history.
 
 ## Limitations
 
@@ -520,22 +463,33 @@ POKit2 currently does not provide:
 
 - hosted SaaS
 - web dashboard
-- npm, pip, Homebrew, Docker, or package-registry install
+- pip, Homebrew, or Docker install
 - required Linear, Slack, Jira, Notion, or GitHub adapter
-- semantic/vector search as a shipped starter feature
+- semantic/vector search as a shipped feature
 - a claim that every runtime is fully proven without fresh proof artifacts
 
 ## For Contributors
 
-Source-repo contributors can run:
+To work from source, clone the repository and link the package locally:
 
 ```bash
-node --test tests/*.mjs
+git clone https://github.com/dongwonlee222/POKit2.git
+cd POKit2
+npm link
+pokit doctor
+```
+
+Then verify your checkout:
+
+```bash
+npm run smoke:cli
 node scripts/pokit-doctor.mjs
 git diff --check
 ```
 
-The starter archive is built from `starter-manifest.yaml` include entries only. `starter/.ai-os/**` maps to `.ai-os/**`, and listed script files map to `scripts/**`.
+The full internal regression suite runs in the development repository before each release; the public repository ships the package source surfaces.
+
+The package contents are governed by the `files` field in `package.json`. The thin residue files written by `pokit install` are defined in `scripts/lib/pokit-topology.mjs`, with seed content under `starter/`.
 
 ## More Docs
 
